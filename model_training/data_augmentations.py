@@ -33,5 +33,10 @@ def gauss_smooth(inputs, device, smooth_kernel_std=2, smooth_kernel_size=100,  p
     gaussKernel = gaussKernel.repeat(C, 1, 1)  # [C, 1, kernel_size]
 
     # Perform convolution
-    smoothed = F.conv1d(inputs, gaussKernel, padding=padding, groups=C)
+    if padding == 'causal':
+        # left-pad by (K_eff - 1) so output[t] depends only on inputs <= t (no future leak)
+        inputs = F.pad(inputs, (gaussKernel.shape[-1] - 1, 0))
+        smoothed = F.conv1d(inputs, gaussKernel, padding=0, groups=C)
+    else:
+        smoothed = F.conv1d(inputs, gaussKernel, padding=padding, groups=C)
     return smoothed.permute(0, 2, 1)  # [B, T, C]

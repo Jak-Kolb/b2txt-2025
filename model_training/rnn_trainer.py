@@ -474,10 +474,11 @@ class BrainToTextDecoder_Trainer:
         # This is done in both training and validation
         if self.transform_args['smooth_data']:
             features = gauss_smooth(
-                inputs = features, 
+                inputs = features,
                 device = self.device,
                 smooth_kernel_std = self.transform_args['smooth_kernel_std'],
                 smooth_kernel_size= self.transform_args['smooth_kernel_size'],
+                padding = 'causal',
                 )
             
         

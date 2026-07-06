@@ -69,7 +69,8 @@ model = GRUDecoder(
 )
 
 # load model weights
-checkpoint = torch.load(os.path.join(model_path, 'checkpoint/best_checkpoint'), weights_only=False)
+# checkpoint = torch.load(os.path.join(model_path, 'checkpoint/best_checkpoint'), weights_only=False)
+checkpoint = torch.load(os.path.join(model_path, 'checkpoint/best_checkpoint'), map_location=torch.device('cpu'), weights_only=False)
 # rename keys to not start with "module." (happens if model was saved with DataParallel)
 for key in list(checkpoint['model_state_dict'].keys()):
     checkpoint['model_state_dict'][key.replace("module.", "")] = checkpoint['model_state_dict'].pop(key)
@@ -115,7 +116,7 @@ with tqdm(total=total_test_trials, desc='Predicting phoneme sequences', unit='tr
             neural_input = np.expand_dims(neural_input, axis=0)
 
             # convert to torch tensor
-            neural_input = torch.tensor(neural_input, device=device, dtype=torch.bfloat16)
+            neural_input = torch.tensor(neural_input, device=device, dtype=torch.float32)
 
             # run decoding step
             logits = runSingleDecodingStep(neural_input, input_layer, model, model_args, device)
@@ -153,6 +154,35 @@ for session, data in test_data.items():
             print(f'True sequence:       {" ".join(true_seq)}')
         print(f'Predicted Sequence:  {" ".join(pred_seq)}')
         print()
+
+
+# ============================================================
+# Local greedy-CTC Phoneme Error Rate (PER) — no LM, no Redis
+# Measures the acoustic model in isolation.
+# ============================================================
+total_phoneme_edit_distance = 0
+total_phoneme_length = 0
+
+for session, data in test_data.items():
+    for trial in range(len(data['pred_seq'])):
+        # predicted phoneme sequence (already collapsed: blanks removed, dups merged)
+        pred = data['pred_seq'][trial]
+
+        # true phoneme sequence: take the first seq_len entries, map IDs -> phoneme strings
+        true_ids = data['seq_class_ids'][trial][0:data['seq_len'][trial]]
+        true = [LOGIT_TO_PHONEME[p] for p in true_ids]
+
+        # edit distance between the two phoneme sequences (insertions + deletions + substitutions)
+        ed = editdistance.eval(pred, true)
+
+        total_phoneme_edit_distance += ed
+        total_phoneme_length += len(true)
+
+per = 100 * total_phoneme_edit_distance / total_phoneme_length
+print()
+print(f'Total true phoneme length: {total_phoneme_length}')
+print(f'Total phoneme edit distance: {total_phoneme_edit_distance}')
+print(f'Aggregate Phoneme Error Rate (PER): {per:.2f}%')
 
 
 # language model inference via redis
