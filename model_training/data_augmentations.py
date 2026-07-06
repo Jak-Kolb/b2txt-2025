@@ -3,40 +3,41 @@ import torch.nn.functional as F
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
 
-def gauss_smooth(inputs, device, smooth_kernel_std=2, smooth_kernel_size=100,  padding='same'):
+def gauss_smooth(inputs, device, smooth_kernel_std=2, smooth_kernel_size=100,
+                 padding='same', lookahead=None):
     """
-    Applies a 1D Gaussian smoothing operation with PyTorch to smooth the data along the time axis.
-    Args:
-        inputs (tensor : B x T x N): A 3D tensor with batch size B, time steps T, and number of features N.
-                                     Assumed to already be on the correct device (e.g., GPU).
-        kernelSD (float): Standard deviation of the Gaussian smoothing kernel.
-        padding (str): Padding mode, either 'same' or 'valid'.
-        device (str): Device to use for computation (e.g., 'cuda' or 'cpu').
-    Returns:
-        smoothed (tensor : B x T x N): A smoothed 3D tensor with batch size B, time steps T, and number of features N.
+    lookahead=None -> original symmetric behavior (padding=`padding`).
+    lookahead=L    -> keep past half + L future taps (peak on current bin),
+                      renormalize, asymmetric-pad -> length-preserving,
+                      out[t] uses inputs[t-p .. t+L]. L = look-ahead in bins
+                      = L_algo. L=0 fully causal; L=p reproduces 'same'.
     """
-    # Get Gaussian kernel
     inp = np.zeros(smooth_kernel_size, dtype=np.float32)
     inp[smooth_kernel_size // 2] = 1
     gaussKernel = gaussian_filter1d(inp, smooth_kernel_std)
     validIdx = np.argwhere(gaussKernel > 0.01)
     gaussKernel = gaussKernel[validIdx]
-    gaussKernel = np.squeeze(gaussKernel / np.sum(gaussKernel))
+    gaussKernel = np.squeeze(gaussKernel / np.sum(gaussKernel))   # K_full, symmetric
 
-    # Convert to tensor
-    gaussKernel = torch.tensor(gaussKernel, dtype=torch.float32, device=device)
-    gaussKernel = gaussKernel.view(1, 1, -1)  # [1, 1, kernel_size]
+    K_full = gaussKernel.shape[0]
+    p = K_full // 2                                               # past taps; peak index
 
-    # Prepare convolution
+    if lookahead is not None:
+        assert 0 <= lookahead <= p, f"lookahead must be in [0, {p}]"
+        gaussKernel = gaussKernel[: p + lookahead + 1]            # offsets -p..+lookahead
+        gaussKernel = gaussKernel / gaussKernel.sum()
+
+    gaussKernel = torch.tensor(gaussKernel, dtype=torch.float32,
+                               device=device).view(1, 1, -1)
+
     B, T, C = inputs.shape
-    inputs = inputs.permute(0, 2, 1)  # [B, C, T]
-    gaussKernel = gaussKernel.repeat(C, 1, 1)  # [C, 1, kernel_size]
+    inputs = inputs.permute(0, 2, 1)                             # [B, C, T]
+    gaussKernel = gaussKernel.repeat(C, 1, 1)                    # [C, 1, K]
 
-    # Perform convolution
-    if padding == 'causal':
-        # left-pad by (K_eff - 1) so output[t] depends only on inputs <= t (no future leak)
-        inputs = F.pad(inputs, (gaussKernel.shape[-1] - 1, 0))
+    if lookahead is not None:
+        inputs = F.pad(inputs, (p, lookahead))                  # left=past, right=future
         smoothed = F.conv1d(inputs, gaussKernel, padding=0, groups=C)
     else:
         smoothed = F.conv1d(inputs, gaussKernel, padding=padding, groups=C)
-    return smoothed.permute(0, 2, 1)  # [B, T, C]
+
+    return smoothed.permute(0, 2, 1)                            # [B, T, C]

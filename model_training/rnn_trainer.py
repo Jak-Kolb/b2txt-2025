@@ -478,7 +478,7 @@ class BrainToTextDecoder_Trainer:
                 device = self.device,
                 smooth_kernel_std = self.transform_args['smooth_kernel_std'],
                 smooth_kernel_size= self.transform_args['smooth_kernel_size'],
-                padding = 'causal',
+                lookahead = self.transform_args['smooth_lookahead'],
                 )
             
         

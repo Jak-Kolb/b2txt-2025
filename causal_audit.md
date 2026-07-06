@@ -74,3 +74,33 @@ import torch.nn.functional as F
 *Why:* `adjusted_lens` must equal the model's output time dimension for CTC to align correctly. If you skip this, the loss/decode lengths will be wrong.
 
 **Note (streaming vs training boundary):** training zero-pads the left edge. In the online decoder you can instead feed *real* preceding history across trial boundaries so only the very first bins of a session are zero-padded — but keep training and the offline `evaluate_model.py` consistent (both zero-pad) so the reported PER matches what the model was trained on.
+
+## Update 2026-07-06 — configurable smoothing lookahead
+
+This supersedes the Step 1 implementation detail above. The smoother no longer uses a special `padding='causal'` branch at the call sites. It now exposes an explicit `lookahead` argument:
+
+- `model_training/data_augmentations.py`: `gauss_smooth(..., padding='same', lookahead=None)`.
+- `lookahead=None`: preserves the original symmetric behavior and honors `padding`.
+- `lookahead=L`: keeps kernel offsets `-p..+L`, renormalizes them, pads `(p, L)`, and runs an unpadded grouped `conv1d` so the output length stays equal to the input length.
+- `model_training/rnn_args.yaml`: adds `smooth_lookahead: 0` as the default real-time setting.
+- `model_training/rnn_trainer.py`: training passes `lookahead = self.transform_args['smooth_lookahead']`.
+- `model_training/evaluate_model_helpers.py`: eval passes `lookahead = model_args['dataset']['data_transforms']['smooth_lookahead']`, so saved model args structurally enforce train/eval consistency.
+
+For the current `smooth_kernel_std=2` trimmed Gaussian, `K_full=9` and `p=4`. Therefore:
+
+- `smooth_lookahead: 0` is the real-time/causal setting. An impulse at bin `t` should produce zero response before `t` and peak at output `t`.
+- `smooth_lookahead: 4` is the symmetric control setting and should reproduce the original smoothing baseline.
+- `smooth_lookahead: 1..3` are optional latency/PER tradeoff points if the `0` versus `4` gap is large enough to justify resolving.
+
+Verification status in this checkout:
+
+- `python3 -m py_compile model_training/data_augmentations.py model_training/rnn_trainer.py model_training/evaluate_model_helpers.py` passed.
+- `git diff --check` passed.
+- `rg` confirms there are no remaining `padding = 'causal'` smoothing call sites under `model_training`.
+- The exact Torch impulse unit check is still pending in the project ML environment. The available shell did not have `python`, `torch`, `numpy`, `scipy`, or `conda` available in a usable combination.
+
+Recommended run order remains:
+
+1. `smooth_lookahead: 4` with fresh `output_dir` and `checkpoint_dir` under `trained_models/` as the control. Confirm aggregate validation PER is near the previous ~10.25% reference; if not, assume environment or run drift before interpreting causal results.
+2. `smooth_lookahead: 0` with a separate fresh output/checkpoint directory as the real-time frontier point.
+3. Fill `smooth_lookahead: 1..3` only if the measured `0` versus `4` PER gap is large enough to justify the added future latency.

@@ -94,7 +94,8 @@ def runSingleDecodingStep(x, input_layer, model, model_args, device):
             device = device,
             smooth_kernel_std = model_args['dataset']['data_transforms']['smooth_kernel_std'],
             smooth_kernel_size = model_args['dataset']['data_transforms']['smooth_kernel_size'],
-            padding = 'causal',
+            lookahead = model_args['dataset']['data_transforms']['smooth_lookahead'],
+            # eval reads lookahead from saved model_args -> train/eval consistency is structural
         )
 
         with torch.no_grad():
