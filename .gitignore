@@ -4,6 +4,7 @@
 
 # ignore rdb files
 *.rdb
+.venv/
 
 # ignore ds_store files
 .DS_Store
