@@ -8,3 +8,6 @@
 
 # ignore ds_store files
 .DS_Store
+model_training/CLAUDE.md
+results/*
+log.md
