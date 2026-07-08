@@ -11,3 +11,4 @@
 model_training/CLAUDE.md
 results/*
 log.md
+model_training/trained_models/*
