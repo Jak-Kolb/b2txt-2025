@@ -33,7 +33,12 @@ fi
 cat $dict | awk '{print $1}' | uniq  > $lm_tgt_dir/lexicons.txt
 
 # n-gram LM
-ngram-count -order $lm_order -gt1min 0 -gt2min 1 -gt3min 1 -gt4min 1 -gt5min 1 -gt6min 1 \
+# Count cutoffs are overridable by env var; the defaults below are the original hard-coded values,
+# so existing recipes are unchanged. They matter at corpus scale: keeping every singleton 4-gram
+# (gt4min=1) cost 3.69 GB peak RSS on a 34M-token pilot and would extrapolate past this box's RAM,
+# while gt3min=2 gt4min=2 costs 2.05 GB for n-grams that survive discounting anyway.
+ngram-count -order $lm_order -gt1min ${GT1MIN:-0} -gt2min ${GT2MIN:-1} -gt3min ${GT3MIN:-1} \
+  -gt4min ${GT4MIN:-1} -gt5min ${GT5MIN:-1} -gt6min ${GT6MIN:-1} \
   -unk -map-unk "<unk>" -limit-vocab -vocab $lm_tgt_dir/lexicons.txt \
   -text $lm_src -lm $lm_tgt_dir/lm_orig.arpa
 

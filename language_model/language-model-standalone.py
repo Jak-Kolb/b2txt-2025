@@ -483,15 +483,18 @@ def main(args):
     # initialize ngram decoder
     logging.info(f'Initializing language model decoder from {lm_path}...')
     start_time = time.time()
+    # C12: these were literals, so --max_active/--beam/--lattice_beam/--ctc_blank_skip_threshold/
+    # --length_penalty were parsed into locals at :420-426 and then silently discarded. They only
+    # took effect through the remote_lm_update_params path (:708-718), which is not startup.
     ngramDecoder = build_lm_decoder(
         lm_path,
-        max_active = 7000,
-        min_active = 200,
-        beam = 17.,
-        lattice_beam = 8.,
+        max_active = max_active,
+        min_active = min_active,
+        beam = beam,
+        lattice_beam = lattice_beam,
         acoustic_scale = acoustic_scale,
-        ctc_blank_skip_threshold = 1.0,
-        length_penalty = 0.0,
+        ctc_blank_skip_threshold = ctc_blank_skip_threshold,
+        length_penalty = length_penalty,
         nbest = nbest,
     )
     logging.info(f'Language model successfully initialized in {(time.time()-start_time):0.4f} seconds.')
