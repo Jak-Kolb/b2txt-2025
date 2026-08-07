@@ -17,6 +17,7 @@ __pycache__/
 results/*
 # gitignore has no inline comments — a trailing "# ..." becomes part of the pattern.
 # upstream ships this one, so keep it tracked:
+!results/baseline_rnn/
 model_training/trained_models/*
 data/hdf5_data_final/
 data/*.zip
@@ -26,6 +27,7 @@ data/*.zip
 log.md
 
 # ---- local assistant context ----
+.claude/*
 CLAUDE.md
 CLAUDE.local.md
 model_training/CLAUDE.md
@@ -47,5 +49,3 @@ language_model/srilm-1.7.3/misc/src/SRILMversion.h
 # ---- corpora and language models (generated, large) ----
 language_model/corpus/
 language_model/generated_lm/
-
-CLAUDE.md
