@@ -13,7 +13,7 @@ import json
 import pickle
 
 from dataset import BrainToTextDataset, train_test_split_indicies
-from data_augmentations import gauss_smooth
+from data_augmentations import gauss_smooth, time_mask, channel_mask
 
 import torchaudio.functional as F # for edit distance
 from omegaconf import OmegaConf
@@ -239,7 +239,10 @@ class BrainToTextDecoder_Trainer:
         else:
             raise ValueError(f"Invalid learning rate scheduler type: {self.args['lr_scheduler_type']}")
         
-        self.ctc_loss = torch.nn.CTCLoss(blank = 0, reduction = 'none', zero_infinity = False)
+        # C5: zero_infinity=True. With False, a single trial whose adjusted_lens < phone_seq_lens
+        # yields an infinite loss, and error_if_nonfinite=True at the grad clip (:554) turns that
+        # into a hard crash. Group 2's masking and random_cut=4 both make that reachable.
+        self.ctc_loss = torch.nn.CTCLoss(blank = 0, reduction = 'none', zero_infinity = True)
 
         # If a checkpoint is provided, then load from checkpoint
         if self.args['init_from_checkpoint']:
@@ -470,7 +473,7 @@ class BrainToTextDecoder_Trainer:
                 features = features[:, cut:, :]
                 n_time_steps = n_time_steps - cut
 
-        # Apply Gaussian smoothing to data 
+        # Apply Gaussian smoothing to data
         # This is done in both training and validation
         if self.transform_args['smooth_data']:
             features = gauss_smooth(
@@ -480,8 +483,24 @@ class BrainToTextDecoder_Trainer:
                 smooth_kernel_size= self.transform_args['smooth_kernel_size'],
                 lookahead = self.transform_args['smooth_lookahead'],
                 )
-            
-        
+
+        # C17/C18 masking is applied AFTER smoothing, deliberately. Masking first would let the
+        # Gaussian kernel bleed neighbouring bins back into the hole and blunt the regularizer;
+        # applied here, the model sees exactly the gaps we intend. Train-only, and .get() keeps
+        # older configs (the reference checkpoints' args.yaml) loadable.
+        if mode == 'train':
+            if self.transform_args.get('time_mask_n', 0) > 0:
+                features = time_mask(
+                    features,
+                    n_masks  = self.transform_args['time_mask_n'],
+                    max_frac = self.transform_args.get('time_mask_max_frac', 0.075),
+                    )
+            if self.transform_args.get('channel_mask_rate', 0) > 0:
+                features = channel_mask(
+                    features,
+                    rate = self.transform_args['channel_mask_rate'],
+                    )
+
         return features, n_time_steps
 
     def train(self):
@@ -625,7 +644,11 @@ class BrainToTextDecoder_Trainer:
 
                 # Optionally save this validation checkpoint, regardless of performance
                 if self.args['save_all_val_steps']:
-                    self.save_model_checkpoint(f'{self.args["checkpoint_dir"]}/checkpoint_batch_{i}', val_metrics['avg_PER'])
+                    # save_model_checkpoint takes (path, PER, loss); the loss argument was missing
+                    # here. The path was dead while save_all_val_steps defaulted to false, so C6
+                    # turning it on is what first exposed it.
+                    self.save_model_checkpoint(f'{self.args["checkpoint_dir"]}/checkpoint_batch_{i}',
+                                               val_metrics['avg_PER'], val_metrics['avg_loss'])
 
                 # Early stopping 
                 if early_stopping and (val_steps_since_improvement >= early_stopping_val_steps):
@@ -641,7 +664,10 @@ class BrainToTextDecoder_Trainer:
 
         # Save final model 
         if self.args['save_final_model']:
-            self.save_model_checkpoint(f'{self.args["checkpoint_dir"]}/final_checkpoint_batch_{i}', val_PERs[-1])
+            # Same missing-loss bug as the save_all_val_steps path above; still dead by default,
+            # fixed here so it does not bite the next person who enables it mid-run.
+            self.save_model_checkpoint(f'{self.args["checkpoint_dir"]}/final_checkpoint_batch_{i}',
+                                       val_PERs[-1], val_losses[-1])
 
         train_stats = {}
         train_stats['train_losses'] = train_losses

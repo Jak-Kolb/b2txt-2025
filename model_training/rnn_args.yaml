@@ -14,16 +14,16 @@ model:
     input_trainable: true # whether the input layer is trainable
     input_layer_dropout: 0.2 # dropout rate for the input layer
 
-gpu_number: '1' # GPU number to use for training, formatted as a string (e.g., '0', '1', etc.)
+gpu_number: '0' # GPU number to use for training, formatted as a string (e.g., '0', '1', etc.)
 mode: train
 use_amp: true # whether to use automatic mixed precision (AMP) for training
 
-output_dir: trained_models/causal_la0 # directory to save the trained model and logs
-checkpoint_dir: trained_models/causal_la0/checkpoint # directory to save checkpoints during training
+output_dir: trained_models/g2_masking # G2 bundle: C17 time mask + C18 channel mask + C19 random_cut=4
+checkpoint_dir: trained_models/g2_masking/checkpoint # directory to save checkpoints during training
 init_from_checkpoint: false # whether to initialize the model from a checkpoint
 init_checkpoint_path: None # path to the checkpoint to initialize the model from, if any
 save_best_checkpoint: true # whether to save the best checkpoint based on validation metrics
-save_all_val_steps: false # whether to save checkpoints at all validation steps
+save_all_val_steps: true # whether to save checkpoints at all validation steps (C6: makes C24 checkpoint averaging free)
 save_final_model: false # whether to save the final model after training
 save_val_metrics: true # whether to save validation metrics during training
 early_stopping: false # whether to use early stopping based on validation metrics
@@ -64,11 +64,14 @@ dataset:
     random_walk_std: 0.0 # standard deviation of the random walk added to the data
     random_walk_axis: -1 # axis along which the random walk is applied
     static_gain_std: 0.0 # standard deviation of the static gain applied to the data
-    random_cut: 3 # number of time steps to randomly cut from the beginning of each batch of trials
+    random_cut: 4 # C19: 3 -> 4 so all four patch phases are trained (phase 3 was never seen)
     smooth_kernel_size: 100 # size of the smoothing kernel applied to the data
     smooth_data: true # whether to smooth the data
     smooth_kernel_std: 2 # standard deviation of the smoothing kernel applied to the data
     smooth_lookahead: 0    # future taps; 0 = causal/real-time, 4 = symmetric baseline
+    time_mask_n: 20 # C17: number of time-mask spans per trial (0 disables)
+    time_mask_max_frac: 0.075 # C17: TOTAL expected masked fraction, shared across the spans
+    channel_mask_rate: 0.10 # C18: probability each channel is zeroed for a whole trial (0 disables)
 
   neural_dim: 512 # dimensionality of the neural data
   batch_size: 64 # batch size for training
