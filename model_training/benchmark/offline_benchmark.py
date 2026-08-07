@@ -129,7 +129,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Acoustic-only offline timing benchmark.")
     parser.add_argument(
         "--checkpoint_dir",
-        default="model_training/trained_models/causal_la0/checkpoint",
+        default="results/causal_la0/checkpoint",
         help="Directory containing best_checkpoint and args.yaml.",
     )
     parser.add_argument(

@@ -84,12 +84,11 @@ def assert_trial_equivalent(
             f"streaming={tuple(streamed_logits.shape)}"
         )
 
-    if offline.numel() == 0:
-        max_diff = 0.0
-    else:
-        diff = torch.abs(streamed_logits - offline)
-        frame_diff = diff.amax(dim=1)
-        max_diff = float(frame_diff.max().item())
+    # Bind diff/frame_diff unconditionally: the empty-trial branch used to leave both
+    # undefined, so the failure path below raised NameError instead of the real assertion.
+    diff = torch.abs(streamed_logits - offline)
+    frame_diff = diff.amax(dim=1) if diff.numel() else diff.new_zeros((0,))
+    max_diff = float(frame_diff.max().item()) if frame_diff.numel() else 0.0
 
     if not max_diff < tolerance:
         bad_frames = torch.nonzero(frame_diff >= tolerance, as_tuple=False)
@@ -153,8 +152,10 @@ def main() -> int:
         "--checkpoint_dirs",
         nargs="+",
         default=[
-            "model_training/trained_models/causal_la0/checkpoint",
-            "model_training/trained_models/causal_la4/checkpoint",
+            # results/ holds the authenticated reference checkpoints; trained_models/ holds runs
+            # this machine is producing and may be mid-training. See install_reference_checkpoints.py.
+            "results/causal_la0/checkpoint",
+            "results/causal_la4/checkpoint",
         ],
         help="Checkpoint directories to test.",
     )

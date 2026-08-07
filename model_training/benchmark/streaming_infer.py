@@ -63,17 +63,25 @@ class StreamingDecoder:
         day_idx: int,
         device: torch.device,
         enable_timing: bool = False,
+        keep_logits: bool = True,
     ):
         self.model = model
         self.args = args
         self.device = device
         self.enable_timing = enable_timing
+        # C3 — retaining every logit frame is O(T) memory that only the equivalence gate needs;
+        # the online collapse rule reads one frame at a time. Deployment sets this False.
+        self.keep_logits = keep_logits
         self.feature_dim = int(args["model"]["n_input_features"])
         self.n_classes = int(args["dataset"]["n_classes"])
         self.patch_size = int(args["model"]["patch_size"])
         self.patch_stride = int(args["model"]["patch_stride"])
         if self.patch_size > 0 and self.patch_stride <= 0:
             raise ValueError("patch_stride must be positive when patch_size > 0")
+        if 0 < self.patch_size < self.patch_stride:
+            # The bounded patch buffer keeps only the last patch_size bins, which is sufficient
+            # exactly when patches overlap. P=14, s=4 upstream.
+            raise ValueError("patch_stride > patch_size would skip bins the bounded buffer drops")
 
         transforms = args["dataset"]["data_transforms"]
         self.smooth_data = bool(transforms.get("smooth_data", True))
@@ -97,15 +105,25 @@ class StreamingDecoder:
         self.day_bias = self.model.day_biases[self.day_idx].detach().squeeze(0)
         self.zero_raw = torch.zeros(self.feature_dim, dtype=torch.float32, device=self.device)
 
-        self.raw_buffer = deque(maxlen=int(self.kernel.numel()))
-        for idx in range(-self.past_taps, 0):
-            self.raw_buffer.append((idx, self.zero_raw))
+        # C1 — a preallocated circular [K, C] window replaces the (index, tensor) deque and its
+        # per-tap linear scan. Pre-rotating the kernel means the window never moves: one matmul
+        # per bin instead of K python-level GPU ops plus K scans.
+        self.window_len = int(self.kernel.numel())
+        self.raw_window = torch.zeros(
+            (self.window_len, self.feature_dim), dtype=torch.float32, device=self.device
+        )
+        self.kernel_rot = torch.stack(
+            [torch.roll(self.kernel, shifts=s) for s in range(self.window_len)]
+        )
+        self.window_pos = 0
         self.raw_index = 0
         self.n_real_bins = 0
         self.next_smooth_index = 0
 
-        self.transformed_buffer: List[torch.Tensor] = []
+        self.transformed_buffer: deque = deque(maxlen=max(self.patch_size, 1))
+        self.n_transformed = 0
         self.next_patch_start = 0
+        self.n_emitted_frames = 0
         self.hidden = self.model.h0.expand(
             self.model.n_layers,
             1,
@@ -159,6 +177,8 @@ class StreamingDecoder:
         return emitted
 
     def logits(self) -> torch.Tensor:
+        if not self.keep_logits and self.n_emitted_frames:
+            raise RuntimeError("logits() requires keep_logits=True")
         if not self.logit_frames:
             return torch.empty((0, self.n_classes), dtype=torch.float32, device=self.device)
         return torch.stack(self.logit_frames, dim=0)
@@ -176,7 +196,9 @@ class StreamingDecoder:
         }
 
     def _append_raw(self, raw_tensor: torch.Tensor, is_real: bool) -> None:
-        self.raw_buffer.append((self.raw_index, raw_tensor.detach()))
+        # Overwrite the oldest slot; window_pos then points at the new oldest.
+        self.raw_window[self.window_pos] = raw_tensor.detach()
+        self.window_pos = (self.window_pos + 1) % self.window_len
         self.raw_index += 1
         if is_real:
             self.n_real_bins += 1
@@ -192,20 +214,16 @@ class StreamingDecoder:
         return emitted
 
     def _compute_smoothed(self, target_idx: int) -> torch.Tensor:
-        smoothed = torch.zeros_like(self.zero_raw)
-        for kernel_idx, weight in enumerate(self.kernel):
-            raw_idx = target_idx - self.past_taps + kernel_idx
-            smoothed = smoothed + self._raw_for_index(raw_idx) * weight
-        return smoothed
-
-    def _raw_for_index(self, raw_idx: int) -> torch.Tensor:
-        if raw_idx < 0 or raw_idx >= self.n_real_bins:
-            return self.zero_raw
-        for idx, value in self.raw_buffer:
-            if idx == raw_idx:
-                return value
-        available = [idx for idx, _value in self.raw_buffer]
-        raise RuntimeError(f"Raw index {raw_idx} is no longer in smoother ring buffer {available}")
+        # The window holds raw indices [raw_index-K, raw_index-1] in circular order from
+        # window_pos, and out[t] needs [t-past_taps, t+lookahead]. Those coincide exactly when
+        # target_idx == raw_index-1-lookahead, which every caller guarantees; assert rather than
+        # silently smooth the wrong bins if a future caller changes the emission schedule.
+        expected = self.raw_index - 1 - self.lookahead
+        if target_idx != expected:
+            raise RuntimeError(
+                f"smoother window misaligned: target {target_idx}, window covers {expected}"
+            )
+        return self.kernel_rot[self.window_pos] @ self.raw_window
 
     def _consume_smoothed_bin(self, smoothed: torch.Tensor) -> List[torch.Tensor]:
         transformed = self.model.day_layer_activation(smoothed @ self.day_weight + self.day_bias)
@@ -214,16 +232,23 @@ class StreamingDecoder:
             return [self._step_gru(transformed.view(1, 1, -1))]
 
         self.transformed_buffer.append(transformed.detach())
+        self.n_transformed += 1
         emitted: List[torch.Tensor] = []
-        while len(self.transformed_buffer) >= self.next_patch_start + self.patch_size:
-            emitted.append(self._emit_patch(self.next_patch_start))
+        while self.n_transformed >= self.next_patch_start + self.patch_size:
+            emitted.append(self._emit_patch())
             self.next_patch_start += self.patch_stride
         return emitted
 
-    def _emit_patch(self, start_idx: int) -> torch.Tensor:
+    def _emit_patch(self) -> torch.Tensor:
+        # With overlapping patches the window that comes due is always the most recent
+        # patch_size bins, which is exactly what the bounded buffer holds.
+        if self.n_transformed != self.next_patch_start + self.patch_size:
+            raise RuntimeError(
+                f"patch {self.next_patch_start} is not the newest window "
+                f"({self.n_transformed} bins seen); bounded buffer cannot serve it"
+            )
         start = self._timer_start()
-        patch_bins = self.transformed_buffer[start_idx : start_idx + self.patch_size]
-        patch = torch.stack(patch_bins, dim=0).reshape(1, 1, -1)
+        patch = torch.stack(tuple(self.transformed_buffer), dim=0).reshape(1, 1, -1)
         frame_logits = self._step_gru(patch)
         self._record_elapsed(start, self.per_patch_compute_sec)
         return frame_logits
@@ -232,7 +257,9 @@ class StreamingDecoder:
         output, self.hidden = self.model.gru(gru_input, self.hidden)
         logits = self.model.out(output)
         frame_logits = logits[0, 0].float()
-        self.logit_frames.append(frame_logits.detach().clone())
+        self.n_emitted_frames += 1
+        if self.keep_logits:
+            self.logit_frames.append(frame_logits.detach().clone())
         self.previous_argmax = update_online_ctc(
             frame_logits,
             self.previous_argmax,
@@ -265,6 +292,7 @@ def run_streaming_trial(
     raw_features,
     day_idx: int,
     enable_timing: bool,
+    keep_logits: bool = True,
 ) -> Dict[str, Any]:
     decoder = StreamingDecoder(
         model=model,
@@ -272,13 +300,14 @@ def run_streaming_trial(
         day_idx=day_idx,
         device=device,
         enable_timing=enable_timing,
+        keep_logits=keep_logits,
     )
 
     for raw_bin in raw_features:
         decoder.process_bin(raw_bin)
     decoder.finish()
 
-    logits = decoder.logits()
+    logits = decoder.logits() if keep_logits else None
     total_sec = decoder.total_compute_sec()
     n_bins = int(raw_features.shape[0])
     return {
@@ -286,7 +315,7 @@ def run_streaming_trial(
         "logits": logits,
         "decoded": decoder.decoded_sequence(),
         "n_bins": n_bins,
-        "n_frames": int(logits.shape[0]),
+        "n_frames": decoder.n_emitted_frames,
         "decoded_len": int(len(decoder.collapsed_tokens)),
         "per_bin_sec": decoder.per_bin_compute_sec,
         "per_patch_sec": decoder.per_patch_compute_sec,
@@ -358,7 +387,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="One-bin-at-a-time streaming acoustic benchmark.")
     parser.add_argument(
         "--checkpoint_dir",
-        default="model_training/trained_models/causal_la0/checkpoint",
+        default="results/causal_la0/checkpoint",
         help="Directory containing best_checkpoint and args.yaml.",
     )
     parser.add_argument(
@@ -413,6 +442,7 @@ def main() -> int:
             raw_features,
             trial.day_idx,
             enable_timing=index >= n_warmup,
+            keep_logits=False,   # C3 — the RTF path discards them anyway (:450)
         )
         if index < n_warmup:
             continue
