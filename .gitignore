@@ -17,7 +17,6 @@ __pycache__/
 results/*
 # gitignore has no inline comments — a trailing "# ..." becomes part of the pattern.
 # upstream ships this one, so keep it tracked:
-!results/baseline_rnn/
 model_training/trained_models/*
 data/hdf5_data_final/
 data/*.zip
@@ -27,9 +26,7 @@ data/*.zip
 log.md
 
 # ---- local assistant context ----
-# AGENTS.md and its one-line CLAUDE.md import shim are BOTH tracked on purpose: Claude Code reads
-# CLAUDE.md, not AGENTS.md, so a clone without CLAUDE.md silently loses the instructions.
-# Personal, uncommitted notes belong in CLAUDE.local.md, which is what this ignores.
+CLAUDE.md
 CLAUDE.local.md
 model_training/CLAUDE.md
 
