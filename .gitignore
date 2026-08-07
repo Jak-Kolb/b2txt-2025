@@ -1,14 +1,54 @@
-# ignore python bytecode files
+# ---- python ----
 *.pyc
+__pycache__/
 *.egg-info
-
-# ignore rdb files
-*.rdb
 .venv/
 
-# ignore ds_store files
+# ---- editor / OS ----
 .DS_Store
-model_training/CLAUDE.md
+
+# ---- redis ----
+*.rdb
+
+# ---- data, checkpoints, and measurement outputs ----
+# results/ holds authenticated reference checkpoints, logit caches, built language models and
+# every measurement JSON. Multi-GB and machine-specific; regenerate with the scripts in
+# model_training/benchmark/ and language_model/.
 results/*
-log.md
+# gitignore has no inline comments — a trailing "# ..." becomes part of the pattern.
+# upstream ships this one, so keep it tracked:
+!results/baseline_rnn/
 model_training/trained_models/*
+data/hdf5_data_final/
+data/*.zip
+
+# ---- run logs ----
+*.log
+log.md
+
+# ---- local assistant context ----
+# AGENTS.md and its one-line CLAUDE.md import shim are BOTH tracked on purpose: Claude Code reads
+# CLAUDE.md, not AGENTS.md, so a clone without CLAUDE.md silently loses the instructions.
+# Personal, uncommitted notes belong in CLAUDE.local.md, which is what this ignores.
+CLAUDE.local.md
+model_training/CLAUDE.md
+
+# ---- build artifacts ----
+# The LM decoder build: cmake tree, fetched deps (openfst/kaldi/boost, ~2.4 GB) and the
+# compiled SRILM. All reproducible via setup_lm.sh + the notes in language_model/build_tlg.sh.
+language_model/runtime/server/x86/build/
+language_model/runtime/server/x86/fc_base/
+language_model/srilm-1.7.3/bin/
+language_model/srilm-1.7.3/lib/
+language_model/srilm-1.7.3/include/
+# Exclude the build PRODUCTS, not the obj/ directories: upstream tracks a STAMP marker inside
+# each one, and git cannot re-include a file whose parent directory is excluded.
+language_model/srilm-1.7.3/**/obj/**/*.[oad]
+language_model/srilm-1.7.3/**/obj/**/SRILMoptions.h
+language_model/srilm-1.7.3/misc/src/SRILMversion.h
+
+# ---- corpora and language models (generated, large) ----
+language_model/corpus/
+language_model/generated_lm/
+
+CLAUDE.md

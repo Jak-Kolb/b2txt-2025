@@ -1,3 +1,25 @@
+> ### ℹ️ This is a fork
+>
+> The upstream repository is the official code release for Card et al. (2024); everything below
+> this box is theirs, unmodified. **This fork investigates one question: how accurate can the
+> system be if the language model must run incrementally, inside a real-time latency budget,
+> instead of as a 620–830 ms batch stage after speech ends?**
+>
+> Headline: **42.42 % → 6.89 % WER on held-in validation sessions, fully incrementally**, with a
+> 123× margin against the per-frame latency budget. The oracle over the decoder's own 100-best is
+> 2.88 %, so the remaining gap is candidate *selection*, not search.
+>
+> - **[RESULTS.md](RESULTS.md)** — measured results, and the several confident predictions they
+>   overturned (perplexity failing to predict WER four separate times; better phoneme accuracy
+>   making word accuracy worse).
+> - **[brainstorm/](brainstorm/)** — planning, audit and research-proposal documents.
+> - Added code lives in `model_training/benchmark/` and `language_model/`; see RESULTS.md for a map.
+>
+> Validation is split into `val-dev` (tuning) and `val-test` (6 held-out sessions), and `val-test`
+> is deliberately untouched.
+
+---
+
 # An Accurate and Rapidly Calibrating Speech Neuroprosthesis
 *The New England Journal of Medicine* (2024)
 
