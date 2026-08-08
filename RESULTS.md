@@ -9,8 +9,9 @@ rescoring and a 6.7B-parameter LLM after speech ends. Everything below runs **fr
 no batch stage**, and every number is measured on this repository's data.
 
 > **Status:** the LM stage is characterized end to end and the acoustic side has been probed.
-> `val-test` (173 trials, 6 held-out sessions) is **deliberately untouched** and reserved for a
-> final evaluation. All WER figures below are `val-dev` (1,253 trials, 35 sessions).
+> `val-test` (173 trials, 6 held-out sessions) was **spent once, on 2026-08-08**, against the frozen
+> stack with nothing re-tuned — see [Held-out evaluation](#held-out-evaluation) below. Unless a row
+> says otherwise, WER figures are `val-dev` (1,253 trials, 35 sessions).
 
 ---
 
@@ -24,12 +25,51 @@ no batch stage**, and every number is measured on this repository's data.
 | + **neural n-best rescoring** (gpt2-large) | **6.89 %** | 29 % of the remaining oracle headroom |
 
 **42.42 % → 6.89 %, incrementally, with no batch stage.** Per-frame LM cost is p50 0.067 ms /
-p95 0.641 ms against a 79 ms per-frame budget — a 123× margin — and total end-of-utterance
-finalization is ~96 ms p95 against a 140 ms budget, versus 620–830 ms for the shipped stack.
+p95 0.641 ms against a 79 ms per-frame budget — a 123× margin — versus 620–830 ms of batch
+finalization for the shipped stack.
+
+End-of-utterance finalization is ~96 ms p95 on val-dev, **but that figure does not survive the
+harder held-out sessions** (~158 ms p95, over budget) because finalization scales with candidate-list
+length. The shipped configuration truncates the n-best to 10, which holds the budget on both splits
+at a cost inside the confidence interval — see [Held-out evaluation](#held-out-evaluation).
 
 The oracle over the 100-best is **2.88 %**, essentially the published 2.66 %. **The correct
 hypothesis is already in the list**; the remaining 4.0 points is a selection problem, not a search
 problem.
+
+---
+
+## Held-out evaluation
+
+The six held-out sessions were decoded **once**, with every hyperparameter frozen at its
+val-dev-selected value and the rescoring grid pinned to a single point, so no selection could occur.
+
+| | val-dev (1,253) | **val-test (173)** |
+|---|---|---|
+| incremental 4-gram, 1-best | 8.49 % | 18.84 % |
+| + gpt2-large rescoring | 6.89 % | 16.10 % |
+| — **unseen** (the reportable row) | 7.09 % | **19.31 %**  *95 % CI [15.17, 23.49]* |
+| — seen | 4.01 % | 11.88 % |
+| headroom recovered by the rescorer | 29 % | **26 %** |
+
+**The rescorer transfers** — 26 % of oracle headroom recovered against 29 % on val-dev. The LM
+stage is not overfit to the tuning split.
+
+**The two splits are not comparable, and the difference is measured, not speculative:**
+
+1. **The held-out sessions are 2.03× harder acoustically** — per-session PER 21.06 % vs 10.39 %.
+   The WER/PER ratio is unchanged across splits, so this is harder data, not a tuning failure.
+2. **43.4 % of val-test references appear verbatim in the training transcriptions, against 6.9 % of
+   val-dev.** The aggregate is memorization-inflated; the unseen row is the only honest headline.
+3. The unseen subset is **98 trials / 663 words**, so the error bar is roughly **±4 points**.
+   Do not read val-test at finer resolution than that.
+
+**The latency ledger is what caught the real problem.** Harder data produces longer candidate lists
+(mean 52.1 vs 30.6), and finalization scales with list length: full n-best reaches **~158 ms p95 on
+val-test, over the 140 ms budget**, while val-dev had suggested ~96 ms. Truncating to the top-10
+candidates costs **0.15 points** — inside the confidence interval — and returns finalization to
+**~83 ms**. The shipped operating point is therefore **gpt2-large @ top-10**. An accuracy-only
+evaluation would have missed this entirely.
 
 ---
 
@@ -84,16 +124,20 @@ it 33 points.
 Rescoring is one batched forward pass per utterance, so it is cheap; the knobs are model size and
 how deep into the n-best list you score.
 
-| Configuration | val-dev WER | finalization p95 |
+| Configuration | val-dev WER | finalization p95 (val-dev) |
 |---|---|---|
 | no rescoring | 8.49 % | 6.1 ms |
 | gpt2-large, top-5 | 7.45 % | ~35 ms |
-| gpt2-large, top-10 | 7.35 % | ~37 ms |
-| **gpt2-large, full n-best** | **6.89 %** | ~96 ms |
+| **gpt2-large, top-10 — shipped** | **7.35 %** | **~37 ms** |
+| gpt2-large, full n-best | 6.89 % | ~96 ms |
 
-Every point sits inside the 140 ms budget. The oracle gain is spread *through* the list — going
-from ~30 candidates to 10 costs 9 points of headroom — and model size and list depth trade off
-against each other (gpt2-large@top-10 ≈ gpt2-small@full on both axes).
+Every point sits inside the 140 ms budget **on val-dev**. The oracle gain is spread *through* the
+list — going from ~30 candidates to 10 costs 9 points of headroom — and model size and list depth
+trade off against each other (gpt2-large@top-10 ≈ gpt2-small@full on both axes).
+
+**The shipped point is top-10, not the most accurate row.** On the harder held-out sessions the
+lists grow (mean 52.1 vs 30.6) and full n-best goes over budget, while top-10 stays under it for
+0.15 points — a cost inside the ±4-point confidence interval on that split.
 
 Scaling stops paying past ~800M parameters: Qwen2.5-1.5B is *worse* than gpt2-large at twice the
 parameters and 2.5× the latency (p95 190.9 ms, over budget).

@@ -526,6 +526,229 @@ Artifacts: `benchmark/neural_rescore.py`, `benchmark/finetune_rescorer.py`,
 
 ---
 
+### 1.13 The plateau is explained 2026-08-07 — the LM is not out-voted, it is confidently wrong
+
+The §1.12 open question was binary: on the 71 % of oracle headroom that survives every rescorer,
+(A) does the neural LM prefer the correct candidate but lose to the acoustic term — a re-weighting
+problem — or (B) are the candidates equiprobable under English, making the acoustic scores the
+binding constraint? **Neither. It is worse than (B): on the majority of the surviving mass
+gpt2-large decisively prefers the *wrong* candidate.** One cached forward, no decode, no training.
+
+**Decomposition of the 6.89 % residual** at the deliverable operating point (γ=0.25, α=1.0):
+
+| component | pts | LM-reachable? |
+|---|---|---|
+| list-limited — no better candidate exists (the oracle) | **2.88** | no; needs a longer list or fusion |
+| **both hypotheses wrong — the oracle pick is merely edit-*closer*** | **1.51** | **no — metric partial credit** |
+| exact match is in the list and the ranking missed it | **2.50** | yes, in principle |
+
+**The 1.51-pt row is a measurement-validity finding and it belongs in the manuscript.** The oracle
+is a minimum over *edit distance*, which awards partial credit to candidates that are nearer the
+reference while being worse English — `grable stag beetles` beats `rebel stack models`, `eulogy
+depart` beats `you are a part`. No language model can be asked to prefer those, and gpt2-large is
+behaving *correctly* as a language model when it does not. **The oracle-over-n-best is therefore a
+loose upper bound on what any LM-based selector can reach**, and this is a general caution about a
+metric the ASR literature quotes freely, not a quirk of this system.
+
+**The corrected accounting: the LM-reachable floor on this list is ~4.39 %, not 2.88 %.** Against
+that, rescoring has recovered 1.60 of 4.10 pts = **39 % of reachable headroom**, not the 29 % of
+5.62 pts quoted in §1.12. Still a plateau; a less dramatic one.
+
+**How gpt2-large votes on the 2.50 genuinely-reachable points** (log P(pick) − log P(best), per
+differing word; |·| < 1 nat = no opinion):
+
+| | trials | WER pts | median nats/word |
+|---|---|---|---|
+| LM prefers the correct sentence — **out-voted** | 57 | **0.72** | −2.94 |
+| **LM prefers a wrong sentence — confidently** | 146 | **1.29** | **+2.92** |
+| LM has no opinion | 52 | 0.48 | +0.31 |
+
+*(the same three buckets over all 255 selection failures are 0.83 / 2.31 / 0.87 pts)*
+
+**Hypothesis (A) is refuted four independent ways.** The acoustic term is not overwhelming anything:
+
+1. **Magnitudes are comparable.** Median |Δ_acoustic| **3.73** vs |Δ_neural| **3.45** at α=1 —
+   a 1.1× ratio, not domination. The acoustic term is the largest contributor to the wrong pick in
+   only 44 % of failures.
+2. **The operating point is a true 2-D interior optimum.** A fine 10 × 13 (γ, α) grid puts the
+   minimum at exactly γ=0.25, α=1.0 → 6.89 %, with a flat basin (6.89–6.95 over γ ∈ [0.20, 0.40],
+   α ∈ [0.75, 1.0]). The coarse C29 grid was not leaving anything on the table.
+3. **Up-weighting the LM breaks more than it fixes, immediately.** α 1.0 → 1.5 fixes 36 trials and
+   breaks 62; the ratio only worsens (α=20: 52 fixed, 362 broken). The 57 out-voted trials have
+   median `α_flip` **1.5** — precisely where the net turns negative. There is no weight that
+   claims them.
+4. **The LM alone is a worse selector than the combination**: picking by neural score only gives
+   **7.30 %** against 6.89 %. The acoustic term is carrying real information, not noise.
+
+**Consequence — C29b shallow fusion is downgraded from priority 1, and it should not be built as
+specified.** Its whole case (§1.12) was that fusion changes *which candidates exist* rather than
+reordering a fixed list, so it alone can beat the oracle. That mechanism is intact, but fusion
+admits candidates *by neural score*, and this measurement says high neural score is anti-correlated
+with correct on the surviving mass (1.29 of the 2.50 reachable pts, plus 1.01 of the unreachable
+1.51). Fusing gpt2-large into the beam is predicted to prune correct hypotheses *earlier* than
+rescoring mis-ranks them — i.e. to **lower** the oracle, which is the one thing rescoring cannot do.
+It also costs decoder integration plus ~10 ms/word.
+
+**What replaces it: raise `nbest`, which tests the same "enlarge the candidate set" hypothesis for
+a decode-parameter change instead of an integration project.** The list is cap-bound where it
+matters:
+
+| list size | trials | exact match present |
+|---|---|---|
+| 1 | 178 | 98.3 % |
+| 2–5 | 362 | 98.3 % |
+| 6–15 | 230 | 95.7 % |
+| 16–40 | 132 | 90.9 % |
+| 41–99 | 108 | 87.0 % |
+| **100 (at the cap)** | **243** | **50.6 %** |
+
+**243 of 1,253 trials saturate `nbest=100`, and those are exactly the trials missing an exact match
+half the time.** Median list size is 8 — the decoder is confident on most trials and the cap binds
+only on the hard tail. That tail is where all 2.88 pts of list-limited floor live. Cost is
+finalization-side and already characterised (n-best extraction p95 21.3 / max 285.6 ms; the neural
+forward scales with list length), so this is a frontier point, not a free lunch — but it is one
+sweep in the existing harness.
+
+Artifacts: `benchmark/rescore_analysis.py`, `results/c29_error_analysis.json`,
+`results/c29_neural_gpt2-large.npz` (cached per-candidate scores — re-analysis is free).
+
+#### Gate N1 — `nbest` 100 → 300 is REJECTED, and it confirms the diagnosis
+
+Pre-registered before launching: single variable `--nbest`, same TLG and decode optimum
+(`acoustic_scale` 0.4 / `blank_penalty` 90 / `beam` 17 / `lattice_beam` 8), val-dev.
+
+| | nbest=100 | nbest=300 |
+|---|---|---|
+| list size, mean | 30.6 | **61.6** |
+| 1-best WER | 8.49 % | 8.49 % *(unchanged — the self-check)* |
+| **oracle** | 2.88 % | **2.57 %** (−0.31) |
+| **rescored WER** (γ=0.25, α=1.0) | 6.89 % | **6.80 %** (−0.09) |
+| — unseen | 7.09 % | 7.02 % |
+| n-best extraction p95 / max | 21.3 / 285.6 ms | **34.0 / 313.3 ms** |
+| neural forward p95 / max | 75.1 / — ms | **115.9 / 374.6 ms** |
+| **total finalization p95** | **~96 ms** | **~150 ms — over the 140 ms budget** |
+
+**Rejected on the ledger: −0.09 pts of WER for +54 ms of p95 finalization, which breaches the
+end-to-end budget outright.** Keep it as a frontier point, not as the operating point.
+
+**But the accuracy half is the interesting half, because it is the gate's middle branch.** Tripling
+the list depth handed the rescorer 0.31 pts of newly-reachable material and it claimed **0.09 —
+a 29 % conversion.** That is the *same* 29 % that §1.12 measured for rescoring against the original
+headroom. **The rescorer's conversion rate is ~29 % independent of how much material it is given**,
+which makes it a property of the ranker, not of the list. You cannot buy WER by enlarging the
+candidate set.
+
+Four independent confirmations that §1.13's diagnosis is robust to list depth:
+
+1. **The (γ, α) optimum does not move** — still exactly γ=0.25, α=1.0, on the same fine grid.
+2. **The bucket structure is unchanged**: lm_wrong 2.31 → 2.34 pts, lm_right 0.83 → 0.95,
+   lm_indifferent 0.87 → 0.93. Doubling the candidates changed nothing about *how* the LM votes.
+3. **The selection-limited mass GREW, 4.01 → 4.23 pts, while the oracle improved.** The deeper list
+   adds more candidates the ranker mis-orders than ones it converts — the mechanism predicted for
+   shallow fusion, observed here for free on the cheaper knob.
+4. **`α` still breaks more than it fixes at the first step** (1.0 → 1.5: 36 fixed, 63 broken), and
+   the unreachable "both hypotheses wrong" mass is stable at 1.46 pts (vs 1.51).
+
+**Consequence: every LM-side lever is now exhausted** — scale (§1.12), domain adaptation (§1.12),
+(γ, α) weighting (§1.13), and list depth (here). The length penalty closes the last one: a fine β
+sweep at the operating point bottoms out at **β=−1 → 6.862 %**, worth **0.025 pts** over β=0.
+
+That matters more than its size, because the scorer is a *linear* combination of (acoustic, 4-gram,
+neural, length) and all three free ratios are now swept to their optimum. **So discriminative
+re-ranking over these features — the textbook response to this diagnosis — cannot pay here.** The
+grid already *is* the optimum of that family. It would need a genuinely new feature.
+
+**And the analysis says which feature is missing: acoustic discrimination, not linguistic.** The
+2.77 reachable pts are dominated by cases where gpt2-large confidently prefers a wrong-but-fluent
+candidate (`same time` over `sky dome`, `rear areas` over `royal irish`, `there is` over
+`they're in`). Those are not language-modelling failures — a general-English LM *should* prefer the
+fluent generic. Only a more discriminative acoustic score can overrule it, and the acoustic term is
+already the largest single contributor to the wrong pick in 47 % of failures.
+
+**This is the first time in this project that an acoustic-side change has a mechanism pointing at
+WER rather than PER**, and it promotes Group 3. The gate must be written accordingly: G2 improved
+PER by sharpening p(blank) and *lost* 0.61 WER pts (§1.10), so the target is **margin between
+competing word hypotheses**, not posterior confidence. Those are different quantities and this
+project has already paid 5.3 GPU-hours for confusing them.
+
+Artifacts: `results/c29_nbest300.json`, `results/c29_error_analysis_nbest300.json`,
+`results/c29_rescore_nbest300.json`, `results/c29_analysis_nbest300.log`,
+`results/c29_neural_c29_nbest300_gpt2-large.npz`.
+
+*(Harness note: `stream_lm.py`'s `rp()` (`:44-50`) resolves a relative path against `REPO` whenever
+it does not already exist. Correct for inputs; for `--out`, which never exists yet, it sends
+`../results/x.json` to `repo/../results/`. Pass output paths as `results/...` without the `../`.)*
+
+---
+
+### 1.14 val-test SPENT 2026-08-08 — the final stack on the held-out sessions
+
+**`val-test` is now spent. It was touched exactly once, on the frozen stack, with nothing re-tuned.**
+Every hyperparameter below was selected on val-dev and passed to val-test as a constant; the
+rescoring grid was pinned to a *single* point (γ=0.25, α=1.0, β=0) so that no selection could occur.
+The decoder's own self-check (α=β=0 reproducing the 1-best to 4 decimals) passed.
+
+Stack: `causal_la0` (L=0 causal) → C28 general 4-gram `lm_gen_p1e-8` @ `acoustic_scale` 0.4 /
+`blank_penalty` 90 / `beam` 17 → gpt2-large rescoring, full n-best.
+
+| | val-dev (1,253) | **val-test (173)** |
+|---|---|---|
+| incremental 4-gram, 1-best | 8.49 % | **18.84 %** |
+| **+ gpt2-large rescoring** | **6.89 %** | **16.10 %** |
+| — **unseen** (the reportable row) | 7.09 % | **19.31 %** *(98 trials)* |
+| — seen | 4.01 % | 11.88 % *(75 trials)* |
+| oracle over the n-best | 2.88 % | 8.22 % |
+| headroom recovered by the rescorer | 29 % | **26 %** |
+
+**The rescorer transfers.** 26 % of headroom recovered against 29 % on val-dev — the one number
+that was supposed to generalize, did. Nothing about the LM stage was overfit to val-dev.
+
+**But the two splits are not comparable, for two measured reasons, and any write-up that puts
+18.84 % next to 8.49 % without both of them is misleading.**
+
+1. **The held-out sessions are 2.03× harder acoustically.** Per-session val PER on the final
+   validation round: **10.39 % mean over the 35 dev sessions vs 21.06 % over the 6 test sessions**
+   (range 12.70–28.25 %). The *easiest* val-test session (12.70 %) is worse than the mean dev
+   session, and only one dev session (20.64 %) reaches the val-test mean. The split held out the six
+   most recent sessions, and the WER/PER ratio is essentially unchanged across splits (~0.9), so
+   **this is a harder-data effect, not a generalization failure of the tuning.**
+2. **The splits have completely different seen/unseen composition.** **43.4 % of val-test references
+   (75/173) appear verbatim in the training transcriptions, against 6.9 % of val-dev (87/1,253)** —
+   a 6.3× difference. The aggregate 16.10 % is therefore heavily memorization-inflated. **19.31 %
+   unseen is the only honest headline**, exactly as `measurement.md` requires.
+
+**The error bar is wide and must be quoted.** The unseen subset is **98 trials / 663 reference
+words**. Bootstrap over trials (5,000 resamples): **19.31 %, 95 % CI [15.17, 23.49]** — roughly
+±4 points. Any comparison against val-test at finer resolution than that is not supported.
+
+#### The latency ledger breaks on val-test at full n-best — change the operating point
+
+Harder data produces longer candidate lists (**mean 52.1 vs 30.6 on val-dev**), and finalization
+scales with list length:
+
+| | n-best extraction p95 | neural forward p95 | **total finalization p95** | unseen WER |
+|---|---|---|---|---|
+| val-dev, full n-best | 21.3 ms | 75.1 ms | ~96 ms | 7.09 % |
+| **val-test, full n-best** | 62.4 ms | 95.5 ms | **~158 ms — OVER the 140 ms budget** | 19.31 % |
+| **val-test, top-10** | 62.4 ms | **21.0 ms** | **~83 ms — fits** | 19.46 % |
+
+**The deliverable operating point should therefore be gpt2-large @ top-10, not full n-best.**
+Truncating costs **0.15 pts** of unseen WER — far inside the ±4-point CI, i.e. not measurable — and
+it is the difference between holding and breaching the end-to-end latency claim on the hard
+sessions. This is a case where the val-dev-tuned configuration was validated at a workload that
+val-test does not represent, and the *ledger*, not the accuracy, is what caught it. **This is the
+strongest justification in the project for the ledger rule.**
+
+*(Note the extraction cost is paid either way — truncation happens after `GetLattice`+`ShortestPath`
+— so top-10 saves only on the neural forward. Cutting extraction would need a narrower
+`lattice_beam`, which was not tuned here and must not be tuned on val-test.)*
+
+Artifacts: `results/valtest_decode.json`, `results/valtest_nbest.json`,
+`results/valtest_rescore.json`, `results/valtest_rescore_top10.json`,
+`results/valtest_1best.hyps.tsv`, `results/c29_neural_valtest_nbest_gpt2-large.npz`.
+
+---
+
 ### 1.11 The remaining gap is re-ranking, not search — measured 2026-08-07
 
 With the C28 4-gram in the beam, `nbest=100` on val-dev:
@@ -1156,15 +1379,143 @@ line). Promote it only in that case.
 
 ## 6. Group 3 — the objective and optimization block
 
-**1 training run, ~5.9 h. Built on Group 2's winner** (or on `causal_la0` if G2 failed — record which).
+> **REVISED 2026-08-07 after §1.13. Read §6.0 before §6.1 — three of the five changes moved.**
+> G2 was rejected, so the base is `causal_la0`, not "Group 2's winner". The gate below is
+> **pre-registered and unlaunched**; it supersedes the PER-based §6.3 that was written before
+> §1.10 established that PER and WER move in opposite directions here.
+
+**1 training run, ~5.9 h. Base = `causal_la0` (G2 failed on WER — §1.10).**
 
 Group 2 changed what the model sees. Group 3 changes how the loss is computed and minimized.
 Mechanically disjoint from Group 2, which is why they can be sequential bundles rather than a
 2×2 grid.
 
+### 6.0 Status after §1.13 — what moved, and the two blockers
+
+**The diagnosis this group must now serve.** §1.13 established that the remaining *reachable* error
+(2.77 pts) is dominated by cases where the neural LM confidently prefers a **wrong-but-fluent**
+candidate, and only a more discriminative **acoustic** score can overrule it. So the target quantity
+is the **margin between competing word hypotheses**, not posterior confidence and not PER. Those are
+different quantities and §1.10 already shows they can move in opposite directions.
+
+| Item | Was | Now | Why |
+|---|---|---|---|
+| C20 label smoothing | in bundle | **DROP** | mechanism refuted 3× (below) |
+| C21 self-conditioned CTC | in bundle, "config-level" | **BLOCKED — needs a model rewrite** | `rnn_model.py:65-72` |
+| C22 day-layer reg | in bundle | in, but generic | no mechanism for the §1.13 diagnosis |
+| C23 weight decay | in bundle | in, but generic | as above |
+| C24 checkpoint averaging | in bundle | **REJECTED — measured, 0 GPU-h** | §6.0.1 result |
+
+**C20 is dropped — its mechanism is now refuted three independent times.** Its whole case was
+"de-sharpen the posterior so the beam has acoustic alternatives to work with." (i) C10 sweeping
+temperature over the *same* logits bought −0.05 pts (§1.7). (ii) G2 sharpened the posterior
+(entropy 0.89 → 0.86 % of max) and lost 0.61 WER pts, which is the right sign for the hypothesis but
+the wrong magnitude to rescue it. (iii) **§1.13 is decisive**: the correct candidate is already in
+the n-best list on **86.8 %** of trials. The beam is not starved of alternatives — it is
+*mis-ranking* the ones it has. Adding more alternatives is answering a question nobody asked.
+
+**C21 is blocked on a structural fact the plan did not check.** `rnn_model.py:65-72` builds **one
+fused `nn.GRU(num_layers=5)`**. There is no way to tap the layer-2 or layer-4 output, and no way to
+project a posterior back into the hidden state between layers, without splitting it into five
+single-layer GRUs. That split costs:
+
+1. **Checkpoint incompatibility.** Parameter names change (`gru.weight_hh_l2` → `gru2.weight_hh_l0`),
+   so `causal_la0`, `causal_la4`, `pretrained_baseline` and `g2_masking` all stop loading through
+   `common.py:load_model` / `clean_state_dict_keys` unless an explicit key mapping is kept. Every
+   benchmark entrypoint reads one of those.
+2. **Loss of the fused cuDNN kernel** — five separate GRU calls instead of one. Unknown cost against
+   the 5.3 h/run budget; **the smoke run must time it**, not just shape-check it.
+3. **The streaming path changes.** `evaluate_model_helpers.py:106` calls with `return_state=True`;
+   hidden-state shape and semantics both change, so **gate G1-a (equivalence, currently PASS at
+   2.4e-07) has to be re-run**, and `benchmark/streaming_infer.py` updated.
+
+This is a day of implementation plus the re-run of an already-passed gate — not the config edit
+§6.1 implies. **It is also the only item in this group whose mechanism matches the §1.13 diagnosis**
+(relaxing CTC's conditional independence is precisely about modelling dependence between output
+tokens, which is what word-level discrimination needs). That tension is the decision to make.
+
+#### 6.0.1 Step 0 — validate C24 for zero GPU-hours, before the run
+
+`causal_la0` was trained with **`save_all_val_steps: false`**
+(`results/causal_la0/checkpoint/args.yaml:23`), so only `best_checkpoint` exists and C24 cannot be
+tested on it. But **`g2_masking` has all 61 per-val-step checkpoints (31 GB)** — C6 was already on
+for that run. So:
+
+> Average the last k=10 `g2_masking` checkpoints (batches 102000…119999, all inside the flat tail of
+> the cosine schedule), decode through the C28 4-gram at G2's own swept optimum
+> (`acoustic_scale` 0.5), and compare WER against `g2_masking/best_checkpoint`'s 9.10 %.
+
+This costs no GPU training and settles whether C24's mechanism is real on *this* architecture before
+it rides into a bundle. **Outcome rules:** improves ≥ 0.15 pts → C24 is in, and the Group 3 run must
+set `save_all_val_steps: true`. Within ±0.15 → C24 is out, and the run saves 31 GB of disk. Worse →
+C24 is out and the §7.6 claim that `best_val_PER` carries optimistic bias needs restating in WER.
+
+*(Testing on the rejected G2 model is deliberate: C24 is a variance-reduction claim about the
+training procedure, which G2 shares with la0. A mechanism that does nothing on G2 will not
+suddenly work on the base model.)*
+
+##### RESULT 2026-08-07 — C24 is OUT. 0 GPU-hours spent.
+
+**The path was validated before the result was read.** `best_checkpoint` was pushed through the new
+harness first: it returns **PER 9.432 %** (recorded: 9.430), **val loss 18.955** (18.96),
+**WER 9.10 %** and **unseen 9.49 %** — all four matching §1.10 exactly. That control matters because
+training-time validation runs under **bf16 autocast** (`rnn_trainer.py:730`) while
+`benchmark/common.offline_logits` is fp32; generating logits through the benchmark path would have
+folded a precision difference into the C24 delta with no way to separate the two.
+`average_checkpoints.py` therefore reuses the trainer's own `validation()`.
+
+| variant | val PER | **WER (all)** | **WER (unseen)** | seen |
+|---|---|---|---|---|
+| `best_checkpoint` (the control) | 9.432 % | **9.10 %** | **9.49 %** | 3.84 % |
+| average, k=10 (batches 102000–119999) | 9.454 % | **9.21 %** (+0.11) | 9.59 % | 4.01 % |
+| average, k=5 (batches 112000–119999) | 9.446 % | **9.07 %** (−0.03) | 9.46 % | 3.84 % |
+
+**Both land inside the ±0.15 neutral band, so C24 is out by the pre-registered rule** — and k=10,
+the value §6.1 actually specified, is the *worse* of the two. The decisive detail is that **the
+spread across k (0.14 pts) is larger than either effect**: C24 is a knob that has to be tuned to buy
+nothing. That is the worst kind of addition to a bundle, because a tuned-on-val k would look like a
+gain and be pure selection.
+
+**Two consequences:**
+
+1. **`save_all_val_steps: false` for G3a**, which also saves **31 GB** of disk per run. C6's "makes
+   C24 free" justification no longer applies; the flag's remaining value is diagnostic only.
+2. **`[AUDIT F8]` needs restating in WER, exactly as this gate anticipated.** F8 measured that
+   `best_val_PER` is a minimum over 61 correlated evaluations carrying ~0.04 pts of optimistic
+   *PER* bias, and inferred there was real variance to average away. In **WER** there is not: the
+   single best checkpoint is as good as or better than any average of its neighbours. The
+   late-training variance F8 found is real but it is **not** the kind that averaging removes —
+   PER-space jitter around a WER-space optimum. Do not carry F8's inference into a WER claim.
+
+Artifacts: `model_training/average_checkpoints.py`, `results/c24_g2_{best,avg10,avg5}.npz`,
+`results/c24_decode_{best,avg10,avg5}.json`, `results/c24_{best,avg10,avg5}.hyps.tsv`.
+The `.pkl` logit dumps and the averaged `.pt` were deleted after export (631 MB); regenerate with
+`average_checkpoints.py` if needed — the run is ~4 min per variant.
+
+#### 6.0.2 Base config — revert G2, and match the la0 anchor exactly
+
+`rnn_args.yaml` is **still in the rejected G2 state** and must be reverted before anything launches:
+
+| Line | Currently | Set to | Why |
+|---|---|---|---|
+| `:21-22` | `trained_models/g2_masking` | `trained_models/g3_objective` | `exist_ok=False`; never clobber |
+| `:72` | `time_mask_n: 20` | **`0`** | C17 — rejected with G2 |
+| `:74` | `channel_mask_rate: 0.10` | **`0`** | C18 — rejected with G2 |
+| `:67` | `random_cut: 4` | **`3`** | see below |
+| `:26` | `save_all_val_steps: true` | **`false`** | C24 rejected (§6.0.1) — saves 31 GB |
+
+**`random_cut` back to 3 is the attribution call.** C19 is the one member of G2 that was never
+separately measured, and `causal_la0` — the anchor every Δ is quoted against — used
+`random_cut: 3` (`results/causal_la0/checkpoint/args.yaml:59`). Carrying C19 into Group 3 would
+smuggle an unmeasured leftover from a rejected bundle into the baseline and confound the objective
+block against its own anchor. C19 is separable and can ride with C16 later if wanted; its measured
+cost is 0.055 PER pts (§1.7 C9), barely above the 0.041 floor.
+
 ### 6.1 Changes
 
-**C20 — label smoothing / entropy regularization on CTC.** This is the one change in the plan that
+**C20 — label smoothing / entropy regularization on CTC. → DROPPED 2026-08-07, see §6.0.** Its own
+exit condition below ("if C10 shows no WER movement, drop C20") has been met: C10 measured −0.05.
+Kept here as the record of the hypothesis. This is the one change in the plan that
 came out of measurement rather than the literature. Mean posterior entropy is **0.033 nats against
 a maximum of ln(41) = 3.714 — 0.9 % of maximum**, with a numerically one-hot median frame **[M]**.
 Add an entropy bonus or label-smoothing term at `rnn_trainer.py:242,539`, smoothing ∈ {0.05, 0.1}.
@@ -1176,7 +1527,8 @@ PER is the right proxy at all. **Gate it on WER, never on PER.** C10 (temperatur
 Group 1) is the cheap preview of this hypothesis — if C10 shows no WER movement, drop C20 from the
 bundle.
 
-**C21 — intermediate / self-conditioned CTC.** Auxiliary CTC heads after GRU layers 2 and 4,
+**C21 — intermediate / self-conditioned CTC. → HELD, and it is NOT a config change: see §6.0 for
+the `nn.GRU(num_layers=5)` blocker and its three knock-on costs.** Auxiliary CTC heads after GRU layers 2 and 4,
 projecting their phoneme posteriors back into the hidden state before the next block. This
 conditions deeper layers on shallower layers' predictions, partially relaxing CTC's
 conditional-independence assumption. Nothing about it requires future context. Aux weight 0.3.
@@ -1205,24 +1557,185 @@ bundle; it is a 2-variable decision. → micro-tuning (§7.6), where it gets a p
 
 ### 6.2 Test block
 
-Identical to §5.3, with `output_dir: trained_models/g3_objective`. **Smoke run first.** C21 changes
-the model graph, so the smoke run is also the shape check.
+Identical to §5.3, with `output_dir: trained_models/g3_objective`. **Smoke run first** (2,000
+batches, ~7 min) — and per §6.0.2 it must be run on the config that will actually launch, including
+whatever `save_all_val_steps` ends up as.
+
+For **G3a as recommended in §6.3 the smoke is a pure sanity check** (C22/C23 are scalar config
+edits and cannot change a shape). **If C21 is ever built, the smoke becomes load-bearing**: it is
+the shape check *and* the timing check, because splitting the fused GRU costs an unknown amount
+against the 5.3 h budget (§6.0).
 
 After the full run, produce **two** checkpoints and evaluate both: the best single checkpoint and
-the k=10 average (C24).
+the k=10 average (C24) — the latter only if §6.0.1 put C24 in the bundle.
 
-### 6.3 Decision gate G3
+### 6.3 Decision gate G3 — PRE-REGISTERED 2026-08-07, unlaunched
+
+**Config.** Base `causal_la0` config with §6.0.2's reverts applied, `seed: 10`,
+`smooth_lookahead: 0`, `num_training_batches: 120000`. Decode through
+`results/lm_gen_p1e-8/data/lang_test`, **re-swept** (see below), `nbest=1` for the primary metric.
+Split: **val-dev, 1,253 trials. `val-test` stays unspent.**
+
+**Primary metric: val-dev WER, unseen subset (1,166 trials), against `causal_la0`'s 8.72 %.**
+Not PER. Not the all-trials 8.49 %. §1.10 is the precedent for why, and the seen/unseen split is
+non-negotiable at every gate in this project.
+
+#### The threshold, and an honesty note about it
 
 | Outcome | Condition | Action |
 |---|---|---|
-| **Pass** | held-out-session **WER** improves ≥ **0.30 pts** over the Group 2 model, at equal decode config | keep; this is the Group 4 base model |
-| **Split** | WER improves but val PER regresses | **expected** if C20 is doing its job. Keep, and report the PER/WER divergence — it is a finding, not a problem |
-| **Neutral** | |ΔWER| < 0.30 pts | keep C24 (free, single model) and C22/C23 (free); drop C20 and C21 from the final config to reduce the manuscript's surface |
-| **Fail** | WER regresses ≥ 0.30 pts | bisect (§7.5). C20 is the first knockout candidate — over-smoothing can flatten the posterior enough that blank skipping stops firing, silently raising LM cost |
+| **Pass** | unseen WER ≤ **8.42 %** (−0.30) | keep; this becomes the Group 4 base model |
+| **Neutral** | 8.42 % < WER < 9.02 % | keep only what is free: C24 if §6.0.1 passed. Drop C22/C23 from the final config to shrink the manuscript's surface |
+| **Fail** | unseen WER ≥ **9.02 %** (+0.30) | do **not** bisect by default — the bundle is only 2–3 items and a bisect costs more than it returns. Record and move to Group 4 |
 
-**Re-run C15 (the decode sweep) after this group.** The optimal `acoustic_scale` moves whenever the
-acoustic posterior changes, and C20 changes it by design. Failing to re-sweep will understate
-Group 3.
+**The 0.30-pt threshold is not backed by a measured WER noise floor, and that is a real weakness.**
+The 0.041-pt reproducibility figure `[AUDIT F9]` is **PER**, from a single same-config replicate
+pair. **No WER reproducibility floor has ever been measured in this project**, so every WER
+comparison quoted anywhere in this file — including G2's decisive-looking +0.61 — rests on one seed.
+C27 (seed replication) is what would fix this, and until it runs, 0.30 pts is a *judgement*
+calibrated to be ~7× the PER floor, not a statistic. Say so in any write-up.
+
+#### Secondary metrics — the mechanism check, and the tripwire
+
+Both are computed from the existing `stream_lm.py nbest` harness at no extra cost, on the trials
+where an exact-match candidate is in the list (86.8 % of val-dev):
+
+**M1 — acoustic margin (the thing Group 3 is supposed to move).**
+
+```
+margin = acoustic_scale * [ ac(exact_match) - max ac(c) over c != exact_match ]
+```
+
+reported as the median over qualifying trials. This is *discrimination*: does the acoustic score
+separate the correct word sequence from its competitors? §1.13 measured today's value implicitly —
+the acoustic term is the largest contributor to the wrong pick in **47 %** of selection failures,
+with median |Δ_ac| **3.73** against |Δ_neu| 3.45. **M1 rising is the mechanism working.**
+
+**M2 — sharpening tripwire (the G2 failure mode).** Mean posterior entropy and the fraction of
+frames with p(blank) > 0.999, against the la0 anchors **0.033 nats (0.9 % of ln 41)** and
+**71.83 %**. G2 moved these to 0.86 % and 73.39 % and lost 0.61 WER pts.
+
+> **Kill rule.** If M2 sharpens (p(blank)>0.999 rises above ~73 %) while M1 does **not** improve,
+> the run is reproducing G2's failure mode and must be rejected *regardless of PER*, and regardless
+> of a WER reading inside the Neutral band. This is the single rule that G2 would have failed early.
+
+**Also record** val PER (best and last-10 mean) and val CTC loss — for the ledger and for the
+PER-vs-WER divergence tally, not as gate inputs.
+
+#### Re-sweep the decode config, per model
+
+The optimal `acoustic_scale` moves whenever the acoustic posterior changes: it went 1.0 → 0.4 from
+the 1-gram to the 4-gram (§1.9b) and G2's own optimum was 0.5 against la0's 0.4 (§1.10). **Compare
+at each model's own optimum AND at matched settings**, exactly as §1.10 did — G2 was worse both
+ways, which is what made that rejection safe.
+
+#### Bundling verdict — C21 must not ride with C22/C23
+
+The plan's own bar is *mechanistically distinct, **same-signed*** changes (§0). Under the §1.13
+diagnosis they are not same-signed on WER:
+
+| | mechanism | expected sign, WER | expected sign, PER |
+|---|---|---|---|
+| C21 | relaxes CTC conditional independence → inter-token dependence | **+** (targets M1 directly) | uncertain |
+| C22/C23 | capacity control on day layers / weights | unknown | + |
+| C24 | variance reduction over checkpoints | + (small) | + (small) |
+
+C22/C23 are a PER-improving capacity story with **no mechanism for M1** — which is the exact profile
+G2 had before it inverted. Bundling them with C21 means a Neutral result is uninterpretable: it
+cannot distinguish "C21 worked and C22/C23 cancelled it" from "nothing worked."
+
+**Recommended sequencing (and it spends no more runs than the original plan):**
+
+- ~~**Step 0** — C24 on the G2 checkpoints.~~ **DONE 2026-08-07, 0 GPU-h. C24 REJECTED** (§6.0.1).
+- **Run G3a** — C22 + C23 only, with `save_all_val_steps: false`. Config-only, zero code risk,
+  ~5.3 h, 31 GB less disk.
+- **C21** — hold. Decide *after* G3a reports, with the implementation cost of §6.0.2 priced against
+  whatever headroom G3a leaves. If C21 is built, it is a **single-variable run** against G3a's
+  winner, because its deliverable is an isolated number about a mechanism, and §0's own rule says
+  validity runs stay unbundled.
+
+**Expected value, stated plainly so it can be argued with:** low. C22/C23 are generic regularization
+with no line to the §1.13 diagnosis; the honest prior after C10, C16 and G2 is that they land in the
+Neutral band. The case for running G3a at all is that it is cheap, it is the last untried
+acoustic-side item, and a Neutral result is itself the evidence needed to say "the acoustic model is
+not where the remaining error is" — which is a claim the manuscript would otherwise be making
+without a test.
+
+---
+
+### 6.4 G3a RESULT 2026-08-08 — NEUTRAL. Do not carry C22/C23.
+
+338 min, 120k batches, `trained_models/g3_objective`. Evaluated against the §6.3 gate as
+pre-registered, before any of it was seen.
+
+| | val PER (best) | val PER (last-10) | val CTC loss | WER (all) | **WER (unseen)** |
+|---|---|---|---|---|---|
+| `causal_la0` (anchor, ac=0.4) | 10.040 % | 10.087 % | 21.74 | 8.49 % | **8.72 %** |
+| **G3a** (C22+C23), own opt ac=0.5 | **9.922 %** | **9.984 %** | **18.22** | **8.38 %** | **8.66 %** |
+| G3a at matched ac=0.4 | — | — | — | 8.47 % | 8.80 % |
+| *(G2, rejected, for scale)* | 9.430 % | 9.499 % | 18.96 | 9.10 % | 9.49 % |
+
+**Primary gate: unseen WER 8.66 % vs 8.72 % = −0.06 pts → NEUTRAL** (Pass ≤ 8.42, Fail ≥ 9.02).
+Per the pre-registered Neutral action, **C22/C23 are dropped from the final config**. C24 had
+already failed §6.0.1, so **Group 3 contributes nothing to the deliverable stack** and the base
+model remains `causal_la0`.
+
+Following the pre-registration matters here, because the post-hoc temptation is real: G3a is not
+*worse* on anything — PER −0.118, last-10 −0.103, val loss 21.74 → 18.22, WER −0.11/−0.06. It is
+simply not better by enough to justify two more hyperparameters in the manuscript, and −0.06 pts is
+far under any plausible WER noise floor (**still unmeasured — see §6.3**).
+
+**M1 is flat, which is the informative part.** The mechanism check says C22/C23 did nothing to
+acoustic discrimination, exactly as §6.3 predicted for generic capacity control:
+
+| | mean margin | prefers correct | **TIED** | prefers wrong |
+|---|---|---|---|---|
+| `causal_la0` | −3.379 | 30.7 % | **21.4 %** | 48.0 % |
+| G3a | −3.113 | 29.6 % | **19.7 %** | 50.7 % |
+
+**M2 does not fire, and G3a moved the opposite way from G2.** Mean posterior entropy
+**0.0324 → 0.0412 nats** (0.87 % → 1.11 % of ln 41, **+27 %**) and p(blank)>0.999
+**71.54 % → 70.74 %**. G2 sharpened (0.0315 nats, 73.13 %) and lost 0.61 WER pts; G3a *de-sharpened*
+and gained 0.06. Small, but the sign is consistent with the C10/C20 mechanism for the first time —
+and still worth only ~0.1 pts, which is C10's finding restated at higher cost.
+
+*(These entropy/blank figures are dev-split only and recomputed identically for all three models;
+they run ~0.3 pts below §1.1's whole-split 0.9 % / 71.83 % for `causal_la0`. Compare within this
+table, not across.)*
+
+#### The real finding: 21.4 % of the reachable decisions are acoustically UNDECIDABLE
+
+Computing M1 exposed something the plan had no entry for. Among trials where the correct candidate
+is in the n-best, **21.4 % have an acoustic score *exactly identical* to their best competitor** —
+not close, bit-identical. Inspection shows why, and it is not a bug:
+
+```
+correct : not too controversial      | competitor: not to  controversial   (too/to)
+correct : not for the job i have now | competitor: not four the job ...    (for/four)
+correct : you just really can't tell | competitor: ... cant tell           (can't/cant)
+```
+
+**They are homophones.** CTC emits the same phoneme sequence, so the acoustic path is the same and
+no acoustic model — of any size, trained any way — can separate them. **These decisions are
+structurally reserved for the language model.**
+
+This sharpens §1.13's conclusion rather than overturning it. The reachable residual splits into:
+
+- **48.0 % — the acoustic score actively prefers the wrong candidate.** This is the mass §1.13
+  pointed at, and it is genuinely acoustic-addressable.
+- **21.4 % — acoustically tied.** No acoustic improvement can ever touch these. (Encouragingly, the
+  4-gram already resolves the sampled cases correctly: `too` −23.99 vs `to` −28.52.)
+- **30.7 % — the acoustic score already prefers the correct candidate**, and it still loses,
+  meaning the LM term is overriding it.
+
+So "the remaining reachable error is acoustic" (§1.13) needs the qualifier: **at most ~48 % of it
+is, and a fifth of it is permanently the LM's problem.** Any future acoustic work should be gated
+on the 48 % subset, where it can actually operate, rather than on aggregate WER — which dilutes the
+signal with 21 % of trials the model provably cannot affect.
+
+Artifacts: `results/g3_logits.npz`, `results/g3_sweep.json`, `results/g3_decode_{own,matched}.json`,
+`results/g3_{own,matched}.hyps.tsv`, `results/g3_nbest.json`,
+`model_training/trained_models/g3_objective/`, `model_training/g3_objective.log`.
 
 ---
 

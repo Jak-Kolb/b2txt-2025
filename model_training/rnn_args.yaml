@@ -18,12 +18,12 @@ gpu_number: '0' # GPU number to use for training, formatted as a string (e.g., '
 mode: train
 use_amp: true # whether to use automatic mixed precision (AMP) for training
 
-output_dir: trained_models/g2_masking # G2 bundle: C17 time mask + C18 channel mask + C19 random_cut=4
-checkpoint_dir: trained_models/g2_masking/checkpoint # directory to save checkpoints during training
+output_dir: trained_models/causal_la0 # the deliverable acoustic model — this config reproduces it
+checkpoint_dir: trained_models/causal_la0/checkpoint # directory to save checkpoints during training
 init_from_checkpoint: false # whether to initialize the model from a checkpoint
 init_checkpoint_path: None # path to the checkpoint to initialize the model from, if any
 save_best_checkpoint: true # whether to save the best checkpoint based on validation metrics
-save_all_val_steps: true # whether to save checkpoints at all validation steps (C6: makes C24 checkpoint averaging free)
+save_all_val_steps: false # C24 was REJECTED on measurement (PLAN §6.0.1), so this is no longer earning its 31 GB
 save_final_model: false # whether to save the final model after training
 save_val_metrics: true # whether to save validation metrics during training
 early_stopping: false # whether to use early stopping based on validation metrics
@@ -35,7 +35,7 @@ lr_max: 0.005 # maximum learning rate for the main model
 lr_min: 0.0001 # minimum learning rate for the main model
 lr_decay_steps: 120000 # number of steps for the learning rate decay
 lr_warmup_steps: 1000 # number of warmup steps for the learning rate scheduler
-lr_max_day: 0.005 # maximum learning rate for the day specific input layers
+lr_max_day: 0.005 # maximum learning rate for the day specific input layers (C22 tried 0.0025 — NEUTRAL, PLAN §6.4)
 lr_min_day: 0.0001 # minimum learning rate for the day specific input layers
 lr_decay_steps_day: 120000 # number of steps for the learning rate decay for the day specific input layers
 lr_warmup_steps_day: 1000 # number of warmup steps for the learning rate scheduler for the day specific input layers
@@ -43,8 +43,8 @@ lr_warmup_steps_day: 1000 # number of warmup steps for the learning rate schedul
 beta0: 0.9 # beta0 parameter for the Adam optimizer
 beta1: 0.999 # beta1 parameter for the Adam optimizer
 epsilon: 0.1 # epsilon parameter for the Adam optimizer
-weight_decay: 0.001 # weight decay for the main model
-weight_decay_day: 0 # weight decay for the day specific input layers
+weight_decay: 0.001 # weight decay for the main model (C23 tried 0.005 — NEUTRAL, PLAN §6.4)
+weight_decay_day: 0 # weight decay for the day specific input layers (C22 tried 0.0001 — NEUTRAL)
 seed: 10 # random seed for reproducibility
 grad_norm_clip_value: 10 # gradient norm clipping value
 
@@ -64,14 +64,14 @@ dataset:
     random_walk_std: 0.0 # standard deviation of the random walk added to the data
     random_walk_axis: -1 # axis along which the random walk is applied
     static_gain_std: 0.0 # standard deviation of the static gain applied to the data
-    random_cut: 4 # C19: 3 -> 4 so all four patch phases are trained (phase 3 was never seen)
+    random_cut: 3 # back to the causal_la0 anchor value; C19 is separable and was never isolated (PLAN §6.0.2)
     smooth_kernel_size: 100 # size of the smoothing kernel applied to the data
     smooth_data: true # whether to smooth the data
     smooth_kernel_std: 2 # standard deviation of the smoothing kernel applied to the data
     smooth_lookahead: 0    # future taps; 0 = causal/real-time, 4 = symmetric baseline
-    time_mask_n: 20 # C17: number of time-mask spans per trial (0 disables)
-    time_mask_max_frac: 0.075 # C17: TOTAL expected masked fraction, shared across the spans
-    channel_mask_rate: 0.10 # C18: probability each channel is zeroed for a whole trial (0 disables)
+    time_mask_n: 0 # C17 REJECTED with G2 (PER -0.61 / WER +0.61) — off
+    time_mask_max_frac: 0.075 # inert while time_mask_n is 0
+    channel_mask_rate: 0 # C18 REJECTED with G2 — off
 
   neural_dim: 512 # dimensionality of the neural data
   batch_size: 64 # batch size for training
