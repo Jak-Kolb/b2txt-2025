@@ -30,8 +30,10 @@ finalization for the shipped stack.
 
 End-of-utterance finalization is ~96 ms p95 on val-dev, **but that figure does not survive the
 harder held-out sessions** (~158 ms p95, over budget) because finalization scales with candidate-list
-length. The shipped configuration truncates the n-best to 10, which holds the budget on both splits
-at a cost inside the confidence interval — see [Held-out evaluation](#held-out-evaluation).
+length. **The evaluated configuration fails its own latency constraint on held-out data** — see
+[Held-out evaluation](#held-out-evaluation). Truncating the n-best to 10 is the obvious mitigation
+and returns finalization to ~83 ms, but its held-out accuracy is unverified for the reason given
+there.
 
 The oracle over the 100-best is **2.88 %**, essentially the published 2.66 %. **The correct
 hypothesis is already in the list**; the remaining 4.0 points is a selection problem, not a search
@@ -64,12 +66,24 @@ stage is not overfit to the tuning split.
 3. The unseen subset is **98 trials / 663 words**, so the error bar is roughly **±4 points**.
    Do not read val-test at finer resolution than that.
 
-**The latency ledger is what caught the real problem.** Harder data produces longer candidate lists
-(mean 52.1 vs 30.6), and finalization scales with list length: full n-best reaches **~158 ms p95 on
-val-test, over the 140 ms budget**, while val-dev had suggested ~96 ms. Truncating to the top-10
-candidates costs **0.15 points** — inside the confidence interval — and returns finalization to
-**~83 ms**. The shipped operating point is therefore **gpt2-large @ top-10**. An accuracy-only
-evaluation would have missed this entirely.
+**The headline held-out finding is a failure, not a pass: the evaluated operating point does not
+hold its own real-time constraint.** Harder data produces longer candidate lists (mean 52.1 vs
+30.6), and finalization scales with list length — full n-best reaches **~158 ms p95 on val-test,
+against the 140 ms budget**, where val-dev had suggested ~96 ms. The *accuracy* transferred; the
+*latency* did not. An accuracy-only evaluation would have reported a clean success.
+
+**A caveat we are obliged to state, because it limits what the mitigation is worth.** Truncating to
+the top-10 candidates returns finalization to ~83 ms and costs 0.15 points on val-test. But that
+number came from evaluating a **second** configuration on a **one-shot** split, which is precisely
+what a held-out set is not for. So:
+
+- **19.31 % unseen (full n-best) is a clean held-out result.** Nothing was tuned; it stands.
+- **19.46 % (top-10) is descriptive only** — a mitigation supported by val-dev whose held-out
+  accuracy is unverified, with no held-out set left to verify it.
+
+The underlying process error is that this evaluation pre-registered accuracy criteria and **no
+latency criterion**, even though the necessary scaling behaviour had already been measured on
+val-dev beforehand. It is recorded here rather than smoothed over.
 
 ---
 
@@ -128,16 +142,17 @@ how deep into the n-best list you score.
 |---|---|---|
 | no rescoring | 8.49 % | 6.1 ms |
 | gpt2-large, top-5 | 7.45 % | ~35 ms |
-| **gpt2-large, top-10 — shipped** | **7.35 %** | **~37 ms** |
-| gpt2-large, full n-best | 6.89 % | ~96 ms |
+| gpt2-large, top-10 | 7.35 % | ~37 ms |
+| **gpt2-large, full n-best — the evaluated point** | **6.89 %** | ~96 ms |
 
 Every point sits inside the 140 ms budget **on val-dev**. The oracle gain is spread *through* the
 list — going from ~30 candidates to 10 costs 9 points of headroom — and model size and list depth
 trade off against each other (gpt2-large@top-10 ≈ gpt2-small@full on both axes).
 
-**The shipped point is top-10, not the most accurate row.** On the harder held-out sessions the
-lists grow (mean 52.1 vs 30.6) and full n-best goes over budget, while top-10 stays under it for
-0.15 points — a cost inside the ±4-point confidence interval on that split.
+**This whole table is a val-dev frontier, and its latency column does not transfer.** On the harder
+held-out sessions the lists grow (mean 52.1 vs 30.6) and every row's finalization cost rises with
+them — full n-best goes over budget there. Choosing a row on the basis of held-out latency is what
+compromised the top-10 number; see [Held-out evaluation](#held-out-evaluation).
 
 Scaling stops paying past ~800M parameters: Qwen2.5-1.5B is *worse* than gpt2-large at twice the
 parameters and 2.5× the latency (p95 190.9 ms, over budget).

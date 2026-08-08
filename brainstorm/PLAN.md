@@ -721,7 +721,7 @@ that was supposed to generalize, did. Nothing about the LM stage was overfit to 
 words**. Bootstrap over trials (5,000 resamples): **19.31 %, 95 % CI [15.17, 23.49]** — roughly
 ±4 points. Any comparison against val-test at finer resolution than that is not supported.
 
-#### The latency ledger breaks on val-test at full n-best — change the operating point
+#### THE HELD-OUT RESULT: the pre-registered operating point FAILS its latency constraint
 
 Harder data produces longer candidate lists (**mean 52.1 vs 30.6 on val-dev**), and finalization
 scales with list length:
@@ -729,15 +729,38 @@ scales with list length:
 | | n-best extraction p95 | neural forward p95 | **total finalization p95** | unseen WER |
 |---|---|---|---|---|
 | val-dev, full n-best | 21.3 ms | 75.1 ms | ~96 ms | 7.09 % |
-| **val-test, full n-best** | 62.4 ms | 95.5 ms | **~158 ms — OVER the 140 ms budget** | 19.31 % |
-| **val-test, top-10** | 62.4 ms | **21.0 ms** | **~83 ms — fits** | 19.46 % |
+| **val-test, full n-best — the evaluated stack** | 62.4 ms | 95.5 ms | **~158 ms — OVER the 140 ms budget** | **19.31 %** |
+| val-test, top-10 — *see the caveat below* | 62.4 ms | 21.0 ms | ~83 ms | 19.46 % |
 
-**The deliverable operating point should therefore be gpt2-large @ top-10, not full n-best.**
-Truncating costs **0.15 pts** of unseen WER — far inside the ±4-point CI, i.e. not measurable — and
-it is the difference between holding and breaching the end-to-end latency claim on the hard
-sessions. This is a case where the val-dev-tuned configuration was validated at a workload that
-val-test does not represent, and the *ledger*, not the accuracy, is what caught it. **This is the
-strongest justification in the project for the ledger rule.**
+**This is the headline held-out finding and it should not be softened: the operating point this
+project pre-registered and tuned on val-dev does not hold its own real-time constraint on held-out
+data.** The accuracy transferred (26 % vs 29 % headroom recovery); the *latency* did not. An
+accuracy-only evaluation would have reported a clean success. **This is the strongest justification
+in the project for the ledger rule** — and note it fired against us, which is the only way such a
+rule earns anything.
+
+##### Process failure — top-10 is NOT a validated held-out result
+
+**The top-10 row above was produced by running a second configuration on val-test and is therefore
+contaminated by selection.** `val-test` is a one-shot split; evaluating two configurations on it and
+preferring one is exactly what the one-shot rule forbids. Recorded plainly:
+
+- **19.31 % unseen (full n-best) is a clean held-out number.** Pre-registered stack, one shot,
+  nothing tuned. It stands.
+- **19.46 % (top-10) is descriptive only.** It is a val-dev-supported *mitigation* whose held-out
+  accuracy is **unverified**, and there is no second held-out set left to verify it against. Do not
+  quote it as the shipped system's held-out WER, and do not call top-10 "validated".
+
+The tempting defense — that a latency breach is a constraint violation rather than an accuracy
+optimization, so fixing it is a different kind of act — does not survive scrutiny. Two configs were
+compared on the held-out split and one was preferred.
+
+**The avoidable part:** §1.13's `nbest=300` experiment had already measured this exact scaling
+(longer lists → higher finalization cost) *on val-dev*. The rule "ship top-10 if held-out lists run
+longer" could and should have been pre-registered **before** the spend. The gap is that the val-test
+spend carried pre-registered *accuracy* criteria and **no latency criterion at all**, while the G3a
+gate two sections earlier had M1/M2. **Any future one-shot spend must pre-register its latency gate
+with the same specificity as its accuracy gate.**
 
 *(Note the extraction cost is paid either way — truncation happens after `GetLattice`+`ShortestPath`
 — so top-10 saves only on the neural forward. Cutting extraction would need a narrower

@@ -47,10 +47,16 @@ floor is ~4.39 %** (§1.13).
 
 Per-frame LM cost p95 **0.641 ms** against 79 ms; finalization ~96 ms p95 against 140 ms.
 
-**Deliverable operating point:** `results/lm_gen_p1e-8/data/lang_test` (3.94 GB TLG) + gpt2-large
-rescoring at **γ=0.25, α=1.0, top-10**. *Changed from full n-best 2026-08-08:* on val-test the
-harder sessions produce longer lists and full n-best finalization hits **~158 ms p95, over the
-140 ms budget**; top-10 costs 0.15 pts (inside a ±4-pt CI) and lands at ~83 ms. §1.14.
+**Evaluated operating point:** `results/lm_gen_p1e-8/data/lang_test` (3.94 GB TLG) + gpt2-large
+rescoring at **γ=0.25, α=1.0, full n-best**. This is what val-test measured, and **it fails the
+latency constraint there** — ~158 ms p95 against the 140 ms budget, because the harder sessions
+produce longer lists (§1.14). Report that as the held-out result; it is the finding.
+
+**top-10 is a mitigation, not a validated operating point.** It lands at ~83 ms and costs 0.15 pts,
+but that number came from running a *second* config on the one-shot split, so its held-out accuracy
+is **unverified** and there is no held-out set left to verify it. Do not quote 19.46 % as the
+shipped system's held-out WER. Any future one-shot spend must **pre-register a latency gate** with
+the same specificity as its accuracy gate — this one had none.
 
 **Acoustic anchors:** `causal_la0` 10.04 % val PER, `causal_la4` 10.21 %, against a **0.041-pt**
 replicate floor. Checkpoints live in `results/`, not `trained_models/`.
