@@ -20,9 +20,23 @@ data/*.zip
 *.log
 log.md
 
-# ---- local assistant context ----
+# ---- assistant instructions are versioned; settings/state stay local ----
 .claude/*
+!.claude/rules/
+.claude/rules/*
+!.claude/rules/acoustic-pipeline.md
+!.claude/rules/measurement.md
+!.claude/rules/language-model.md
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/train-model/
+.claude/skills/train-model/*
+!.claude/skills/train-model/SKILL.md
+!.claude/skills/build-lm/
+.claude/skills/build-lm/*
+!.claude/skills/build-lm/SKILL.md
 CLAUDE.md
+!/CLAUDE.md
 CLAUDE.local.md
 model_training/CLAUDE.md
 

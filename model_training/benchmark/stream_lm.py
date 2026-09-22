@@ -1,32 +1,16 @@
-"""C13 — incremental WFST decoding: the constrained baseline and its per-frame cost.
+"""Incremental WFST decoding and cached-logit output tracing.
 
-Answers the two measurements that gate every WER number in PLAN.md:
+Acoustic inference does not run here. Decoder output timestamps are measured on
+an unpaced cached-logit replay, with dataset-provided trial ends. They are not
+source-feature-to-text latency or speech-word alignment.
 
-    Q1  what does the incremental WFST beam search cost per frame?
-    Q2  what WER does incremental-n-gram-only decoding reach, with Rescore()/augment_nbest()/OPT
-        all deleted?
-
-The acoustic model never runs here — everything reads cached val logits.
-
-TWO ENVIRONMENTS, BY NECESSITY
-------------------------------
-`lm_decoder` is built for python3.9 / numpy 1.24 (setup_lm.sh pins torch==1.13.1, which caps
-numpy below 2). The val_metrics.pkl written by training uses numpy 2.x and cannot be unpickled
-there. The .npy *format* is stable across both, so the two stages talk through a cache file:
-
-    # stage 1 — in .venv (numpy 2.x)
-    ../.venv/bin/python benchmark/stream_lm.py export \
-        --val_metrics results/causal_la0/checkpoint/val_metrics.pkl \
-        --out results/la0_logits.npz
-
-    # stage 2 — in the LM env (numpy 1.24, has lm_decoder)
-    $(conda info --base)/envs/b2txt25_lm/bin/python benchmark/stream_lm.py decode \
-        --cache results/la0_logits.npz --out results/stream_lm_la0.json
-
-Stage 2 deliberately does NOT pass --rescore or --do_opt and uses nbest=1: those three stages are
-the 620-830 ms batch wall this measurement exists to remove.
+Export caches in .venv; decode in the Python 3.9 b2txt25_lm environment.
+Use decode --capture_partials --trace_out NEW.jsonl to persist actual output.
+Use trace-summary --trace NEW.jsonl to reproduce revision summaries offline.
 """
 import argparse
+from contextlib import nullcontext
+import hashlib
 import json
 import math
 import re
@@ -36,6 +20,12 @@ import sys
 import time
 
 import numpy as np
+
+try:
+    from .output_trace import OutputTraceWriter, summarize_trace
+except ImportError:  # supports direct script execution
+    from output_trace import OutputTraceWriter, summarize_trace
+
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 DEFAULT_LM = REPO / "language_model/pretrained_language_models/openwebtext_1gram_lm_sil"
@@ -111,14 +101,22 @@ def load_cache(path):
 VAL_TEST_DAYS = (39, 40, 41, 42, 43, 44)   # see model_training/splits.py
 
 
-def apply_split(trials, texts, days, split):
-    """dev = tune here | test = touch ONCE per group | all = both (do not tune on this)."""
+def split_indices(days, split):
+    """Preserve historical partitions; 'test' is exposed, not an independent holdout."""
+    if split not in {"dev", "test", "all"}:
+        raise ValueError(f"Unknown split: {split}")
     if split == "all":
-        return trials, texts
-    keep = [i for i in range(len(trials))
-            if (days[i] in VAL_TEST_DAYS) == (split == "test")]
-    if days[0] == -1:
-        raise ValueError("cache has no day indices — re-run `export` to add them")
+        return list(range(len(days)))
+    if any(day < 0 for day in days):
+        raise ValueError("cache has no day indices — re-run export to add them")
+    return [i for i, day in enumerate(days)
+            if (day in VAL_TEST_DAYS) == (split == "test")]
+
+
+def apply_split(trials, texts, days, split):
+    if not len(trials) == len(texts) == len(days):
+        raise ValueError("Trial, reference, and day counts must match")
+    keep = split_indices(days, split)
     return [trials[i] for i in keep], [texts[i] for i in keep]
 
 
@@ -155,69 +153,100 @@ def pct(v, p):
 # ----------------------------------------------------------------------------------------
 # stage 2 — incremental decode (runs where lm_decoder is importable)
 # ----------------------------------------------------------------------------------------
+def _timing_stats(values):
+    if not values:
+        return dict(mean=None, p50=None, p95=None, p99=None, max=None)
+    return dict(mean=float(np.mean(values)), p50=pct(values, 50), p95=pct(values, 95),
+                p99=pct(values, 99), max=float(max(values)))
+
+
 def run_decode(lm_decoder, lm_dir, trials, texts, *, acoustic_scale, blank_penalty, beam,
                lattice_beam, max_active, min_active, length_penalty, blank_skip_thresh,
-               capture_partials=False, progress=0, temperature=1.0):
-    """One full incremental decode pass. Returns a metrics dict. No rescore, no OPT, nbest=1.
+               capture_partials=False, progress=0, temperature=1.0,
+               trace_writer=None, trial_ids=None, day_indices=None):
+    """Decode cached logits; optional traces contain no references or inferred input times."""
+    if len(trials) != len(texts) or not len(trials):
+        raise ValueError("Decode requires a nonempty, matched set of trials and references")
+    if not math.isfinite(temperature) or temperature <= 0:
+        raise ValueError("temperature must be positive and finite")
+    if not math.isfinite(blank_penalty) or blank_penalty <= 0:
+        raise ValueError("blank_penalty must be positive and finite")
+    if capture_partials != (trace_writer is not None):
+        raise ValueError("capture_partials requires a trace writer, and vice versa")
+    trial_ids = list(range(len(trials))) if trial_ids is None else list(trial_ids)
+    day_indices = [-1] * len(trials) if day_indices is None else list(day_indices)
+    if len(trial_ids) != len(trials) or len(day_indices) != len(trials):
+        raise ValueError("Trace identities must match the trial count")
+    if any(lg.ndim != 2 or lg.shape[1] == 0 for lg in trials):
+        raise ValueError("Each logit trial must have shape [frames, classes]")
 
-    C10: `temperature` divides the logits before DecodeNumpy's internal log_softmax
-    (lm_decoder.cc:31). It is NOT a reparameterization of acoustic_scale -- scaling log-probs
-    shifts every path by the same per-frame constant, while scaling logits renormalizes and
-    genuinely reshapes the posterior. The posterior here is near one-hot (mean entropy 0.9 % of
-    maximum), which starves the beam of alternatives, so this is the free test of whether
-    calibration is the binding problem.
-    """
-    import numpy as _np
     opts = lm_decoder.DecodeOptions(max_active, min_active, beam, lattice_beam,
                                     acoustic_scale, blank_skip_thresh, length_penalty, 1)
     res = lm_decoder.DecodeResource(str(pathlib.Path(lm_dir) / "TLG.fst"), "", "",
                                     str(pathlib.Path(lm_dir) / "words.txt"), "")
     dec = lm_decoder.BrainSpeechDecoder(res, opts)
-    log_bp = float(_np.log(blank_penalty))
-
+    log_bp = float(np.log(blank_penalty))
     frame_ms, result_ms, finish_ms, hyps = [], [], [], []
     edits = words = 0
-    t_start = time.time()
+    t_start = time.perf_counter()
     for idx, (lg, ref) in enumerate(zip(trials, texts)):
         if temperature != 1.0:
             lg = lg / temperature
+        if trace_writer is not None:
+            trace_writer.start_trial(int(trial_ids[idx]), int(day_indices[idx]), int(lg.shape[0]))
+        origin = time.perf_counter_ns()
         dec.Reset()
         for f in range(lg.shape[0]):
-            row = _np.ascontiguousarray(lg[f:f + 1])
-            t0 = time.perf_counter()
-            lm_decoder.DecodeNumpy(dec, row, _np.zeros_like(row), log_bp)
-            frame_ms.append((time.perf_counter() - t0) * 1000.0)
+            row = np.ascontiguousarray(lg[f:f + 1])
+            processing_start = time.perf_counter_ns()
+            lm_decoder.DecodeNumpy(dec, row, np.zeros_like(row), log_bp)
+            frame_ms.append((time.perf_counter_ns() - processing_start) / 1e6)
             if capture_partials:
-                t0 = time.perf_counter(); dec.result()
-                result_ms.append((time.perf_counter() - t0) * 1000.0)
-        t0 = time.perf_counter()
-        dec.FinishDecoding(); r = dec.result()
-        finish_ms.append((time.perf_counter() - t0) * 1000.0)
-        hyp = r[0].sentence.strip() if r else ""
+                t0 = time.perf_counter_ns()
+                partial = dec.result()
+                result_ms.append((time.perf_counter_ns() - t0) / 1e6)
+                partial_words = partial[0].sentence.strip().split() if partial else []
+                ready = time.perf_counter_ns()
+                trace_writer.output(
+                    kind="partial", frame_index=f, words=partial_words,
+                    processing_start_ns=processing_start - origin,
+                    output_ready_ns=ready - origin)
+        finish_start = time.perf_counter_ns()
+        dec.FinishDecoding()
+        result = dec.result()
+        finish_ms.append((time.perf_counter_ns() - finish_start) / 1e6)
+        hyp = result[0].sentence.strip() if result else ""
+        final_words = hyp.split()
+        ready = time.perf_counter_ns()
+        if trace_writer is not None:
+            trace_writer.output(
+                kind="final", frame_index=int(lg.shape[0]) - 1 if lg.shape[0] else None,
+                words=final_words, processing_start_ns=finish_start - origin,
+                output_ready_ns=ready - origin)
         hyps.append(hyp)
         rw, hw = norm_words(ref), norm_words(hyp)
-        edits += levenshtein(rw, hw); words += len(rw)
+        edits += levenshtein(rw, hw)
+        words += len(rw)
         if progress and (idx + 1) % progress == 0:
             print(f"  {idx+1}/{len(trials)} trials  running WER "
                   f"{100.0*edits/max(words,1):.2f}%", flush=True)
 
-    fm = _np.array(frame_ms); fin = _np.array(finish_ms)
     out = {
-        "config": {"acoustic_scale": acoustic_scale, "blank_penalty": blank_penalty,
-                   "beam": beam, "max_active": max_active,
-                   "blank_skip_thresh": blank_skip_thresh, "temperature": temperature,
+        "config": {"lm": str(lm_dir), "acoustic_scale": acoustic_scale,
+                   "blank_penalty": blank_penalty, "beam": beam, "lattice_beam": lattice_beam,
+                   "max_active": max_active, "min_active": min_active,
+                   "length_penalty": length_penalty, "blank_skip_thresh": blank_skip_thresh,
+                   "temperature": temperature, "capture_partials": capture_partials,
                    "nbest": 1, "rescore": False, "opt": False},
-        "n_trials": len(trials), "n_frames": int(fm.size),
+        "timing_boundary": "cached_logits_to_decoder_output",
+        "replay_mode": "unpaced", "endpoint": "provided_trial_end",
+        "n_trials": len(trials), "n_frames": len(frame_ms),
         "wer_percent": 100.0 * edits / max(words, 1), "edits": edits, "ref_words": words,
-        "per_frame_ms": {"mean": float(fm.mean()), "p50": pct(fm, 50), "p95": pct(fm, 95),
-                         "p99": pct(fm, 99), "max": float(fm.max())},
-        "finalize_ms": {"p50": pct(fin, 50), "p95": pct(fin, 95), "max": float(fin.max())},
-        "wall_sec": time.time() - t_start,
-        "hyps": hyps,
+        "per_frame_ms": _timing_stats(frame_ms), "finalize_ms": _timing_stats(finish_ms),
+        "wall_sec": time.perf_counter() - t_start, "hyps": hyps,
     }
     if result_ms:
-        rm = _np.array(result_ms)
-        out["partial_extract_ms"] = {"p50": pct(rm, 50), "p95": pct(rm, 95)}
+        out["partial_extract_ms"] = _timing_stats(result_ms)
     return out
 
 
@@ -263,99 +292,108 @@ def cmd_sweep(args):
         print(f"wrote {q}")
 
 
+def _fresh_paths(paths):
+    resolved = [rp(p).resolve() for p in paths if p]
+    if len(set(resolved)) != len(resolved):
+        raise ValueError("Output paths must be distinct")
+    for path in resolved:
+        if path.exists():
+            raise FileExistsError(f"Use a fresh output path: {path}")
+
+
+def _write_new_json(path, payload):
+    path = rp(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("x", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, allow_nan=False)
+
+
+def _sha256(path):
+    digest = hashlib.sha256()
+    with pathlib.Path(path).open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 def cmd_decode(args):
-    import lm_decoder
-
+    if args.n_trials < 0:
+        raise ValueError("n_trials must be nonnegative")
+    if args.capture_partials != bool(args.trace_out):
+        raise ValueError("Use --capture_partials and --trace_out together")
+    _fresh_paths([args.out, args.save_hyps, args.trace_out])
     trials, texts, days = load_cache(rp(args.cache))
-    trials, texts = apply_split(trials, texts, days, args.split)
+    if not len(trials) == len(texts) == len(days):
+        raise ValueError("Cache trial, reference, and day counts must match")
+    keep = split_indices(days, args.split)
     if args.n_trials:
-        trials, texts = trials[: args.n_trials], texts[: args.n_trials]
+        keep = keep[:args.n_trials]
+    selected = [trials[i] for i in keep]
+    references = [texts[i] for i in keep]
+    selected_days = [int(days[i]) for i in keep]
+    if not selected:
+        raise ValueError("No trials selected; check split and cache")
 
-    opts = lm_decoder.DecodeOptions(
-        args.max_active, args.min_active, args.beam, args.lattice_beam,
-        args.acoustic_scale, args.blank_skip_thresh, args.length_penalty, 1,  # nbest=1
-    )
-    res = lm_decoder.DecodeResource(
-        str(rp(args.lm) / "TLG.fst"), "", "", str(rp(args.lm) / "words.txt"), "")
-    decoder = lm_decoder.BrainSpeechDecoder(res, opts)
-    log_bp = float(np.log(args.blank_penalty))
-
-    frame_ms, result_ms, finish_ms = [], [], []
-    edits = words = 0
-    hyps = []
-    t_start = time.time()
-
-    for idx, (lg, ref) in enumerate(zip(trials, texts)):
-        decoder.Reset()
-        for f in range(lg.shape[0]):
-            row = np.ascontiguousarray(lg[f:f + 1])
-            t0 = time.perf_counter()
-            lm_decoder.DecodeNumpy(decoder, row, np.zeros_like(row), log_bp)
-            frame_ms.append((time.perf_counter() - t0) * 1000.0)
-            if args.capture_partials:
-                t0 = time.perf_counter()
-                r = decoder.result()
-                result_ms.append((time.perf_counter() - t0) * 1000.0)
-
-        t0 = time.perf_counter()
-        decoder.FinishDecoding()
-        r = decoder.result()
-        finish_ms.append((time.perf_counter() - t0) * 1000.0)
-
-        hyp = r[0].sentence.strip() if r else ""
-        hyps.append(hyp)
-        rw, hw = norm_words(ref), norm_words(hyp)
-        edits += levenshtein(rw, hw)
-        words += len(rw)
-
-        if args.progress and (idx + 1) % args.progress == 0:
-            print(f"  {idx+1}/{len(trials)} trials  running WER {100.0*edits/max(words,1):.2f}%",
-                  flush=True)
-
-    frame_ms = np.array(frame_ms)
-    finish_ms = np.array(finish_ms)
-    wer = 100.0 * edits / max(words, 1)
-
-    out = {
-        "config": {
-            "lm": str(args.lm), "acoustic_scale": args.acoustic_scale,
-            "blank_penalty": args.blank_penalty, "beam": args.beam,
-            "max_active": args.max_active, "blank_skip_thresh": args.blank_skip_thresh,
-            "nbest": 1, "rescore": False, "opt": False,
-        },
-        "n_trials": len(trials), "n_frames": int(frame_ms.size),
-        "wer_percent": wer, "edits": edits, "ref_words": words,
-        "per_frame_ms": {"mean": float(frame_ms.mean()), "p50": pct(frame_ms, 50),
-                         "p95": pct(frame_ms, 95), "p99": pct(frame_ms, 99),
-                         "max": float(frame_ms.max())},
-        "finalize_ms": {"p50": pct(finish_ms, 50), "p95": pct(finish_ms, 95),
-                        "max": float(finish_ms.max())},
-        "wall_sec": time.time() - t_start,
+    metadata = {
+        "timing_boundary": "cached_logits_to_decoder_output", "replay_mode": "unpaced",
+        "endpoint": "provided_trial_end", "commitment_policy": "none",
+        "source_feature_availability": "not_measured",
+        "output_ready_boundary": "after_result_and_tokenization_before_trace_serialization",
+        "clock_origin": "before_decoder_reset_per_trial",
+        "trace_bookkeeping": "included_in_subsequent_elapsed_times",
+        "cache": str(rp(args.cache).resolve()), "split": args.split,
+        "split_caveat": "historical partitions; former test influenced acoustic selection",
+        "config": {key: getattr(args, key) for key in (
+            "lm", "acoustic_scale", "blank_penalty", "beam", "lattice_beam", "max_active",
+            "min_active", "length_penalty", "blank_skip_thresh")},
     }
-    if result_ms:
-        rm = np.array(result_ms)
-        out["partial_extract_ms"] = {"p50": pct(rm, 50), "p95": pct(rm, 95)}
-
-    budget = 79.0  # ms left for the LM after acoustic (BUDGET.md)
-    print("\n" + "=" * 66)
-    print(f"  Q2  constrained-baseline WER : {wer:.2f} %   ({len(trials)} trials)")
-    print(f"  Q1  per-frame WFST cost      : p50 {out['per_frame_ms']['p50']:.3f}  "
-          f"p95 {out['per_frame_ms']['p95']:.3f}  max {out['per_frame_ms']['max']:.3f} ms")
-    print(f"      vs {budget:.0f} ms budget        : "
-          f"{'PASS' if out['per_frame_ms']['p95'] <= budget else 'FAIL'} "
-          f"({budget/max(out['per_frame_ms']['p95'],1e-9):.0f}x margin at p95)")
-    print(f"      finalize per trial       : p50 {out['finalize_ms']['p50']:.2f}  "
-          f"p95 {out['finalize_ms']['p95']:.2f} ms")
-    print("=" * 66)
-
+    metadata["config"].update(lm=str(rp(args.lm).resolve()), nbest=1, temperature=1.0,
+                              rescore=False, opt=False, capture_partials=args.capture_partials)
+    if args.capture_partials:
+        metadata["source_sha256"] = {
+            name: _sha256(pathlib.Path(__file__).with_name(name))
+            for name in ("stream_lm.py", "output_trace.py")
+        }
+        metadata["cache_sha256"] = _sha256(rp(args.cache))
+        metadata["reference_sidecar_sha256"] = _sha256(rp(args.cache).with_suffix(".txt"))
+    context = OutputTraceWriter(rp(args.trace_out), metadata) if args.capture_partials else nullcontext()
+    import lm_decoder
+    with context as writer:
+        out = run_decode(
+            lm_decoder, rp(args.lm), selected, references,
+            acoustic_scale=args.acoustic_scale, blank_penalty=args.blank_penalty,
+            beam=args.beam, lattice_beam=args.lattice_beam, max_active=args.max_active,
+            min_active=args.min_active, length_penalty=args.length_penalty,
+            blank_skip_thresh=args.blank_skip_thresh, capture_partials=args.capture_partials,
+            progress=args.progress, trace_writer=writer, trial_ids=keep, day_indices=selected_days)
+    hyps = out.pop("hyps")
+    out.update(split=args.split, cache_indices=keep, day_indices=selected_days)
+    if args.capture_partials:
+        out["output_trace"] = str(rp(args.trace_out))
+        out["output_stability"] = summarize_trace(rp(args.trace_out))
+    print(f"Final transcript WER: {out['wer_percent']:.2f}% ({len(selected)} trials)")
+    print("Timing boundary: unpaced cached logits; no end-to-end deadline claim.")
+    print(f"WFST frame ms: {out['per_frame_ms']}")
+    print(f"Finalization ms: {out['finalize_ms']}")
     if args.out:
-        p = rp(args.out)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(out, indent=2))
-        if args.save_hyps:
-            rp(args.save_hyps).write_text(
-                "\n".join(f"{r}\t{h}" for r, h in zip(texts, hyps)))
-        print(f"wrote {p}")
+        _write_new_json(args.out, out)
+        print(f"wrote {rp(args.out)}")
+    if args.save_hyps:
+        path = rp(args.save_hyps)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("x", encoding="utf-8") as handle:
+            handle.write("\n".join(f"{r}\t{h}" for r, h in zip(references, hyps)))
+    return 0
+
+
+def cmd_trace_summary(args):
+    if args.out:
+        _fresh_paths([args.out])
+    report = summarize_trace(rp(args.trace))
+    if args.out:
+        _write_new_json(args.out, report)
+    print(json.dumps(report, indent=2, allow_nan=False))
+    return 0
 
 
 def cmd_temp(args):
@@ -626,10 +664,11 @@ def main():
     d.add_argument("--blank_skip_thresh", type=float, default=1.0,
                    help="1.0 = disabled (can never fire). C14 sweeps 0.999/0.99/0.9")
     d.add_argument("--capture_partials", action="store_true",
-                   help="call result() every frame for stability metrics; adds real cost")
+                   help="persist every partial/final output; requires --trace_out and adds real cost")
+    d.add_argument("--trace_out", default="", help="Fresh JSONL trace path; requires --capture_partials")
     d.add_argument("--split", choices=["dev", "test", "all"], default="dev",
-                   help="dev = 35 sessions/1253 trials (tune here); "
-                        "test = 6 held-out sessions/173 trials (touch once per group)")
+                   help="historical partitions: dev for development; "
+                        "test is exposed and requires an explicitly revised evaluation scope")
     d.add_argument("--n_trials", type=int, default=0)
     d.add_argument("--progress", type=int, default=200)
     d.add_argument("--out", default="")
@@ -695,6 +734,11 @@ def main():
     s.add_argument("--betas", default="0,2,4")
     s.add_argument("--out", default="results/rescore_indomain_trigram.json")
     s.set_defaults(func=cmd_rescore)
+
+    trace = sub.add_parser("trace-summary", help="replay a completed output trace without data or an LM")
+    trace.add_argument("--trace", required=True)
+    trace.add_argument("--out", default="", help="Optional fresh JSON summary path")
+    trace.set_defaults(func=cmd_trace_summary)
 
     a = ap.parse_args()
     return a.func(a) or 0

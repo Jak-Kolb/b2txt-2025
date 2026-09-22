@@ -1,23 +1,26 @@
-> ### ℹ️ This is a fork
+> ### This fork: efficient streaming neural speech-to-text
 >
-> The upstream repository is the official code release for Card et al. (2024); everything below
-> this box is theirs, unmodified. **This fork investigates one question: how accurate can the
-> system be if the language model must run incrementally, inside a real-time latency budget,
-> instead of as a 620–830 ms batch stage after speech ends?**
+> Build and measure a real-time decoding pipeline on B2T '25 intracortical data
+> and the Makin lab's ECoG dataset, using appropriate frontends and a shared
+> evaluation framework. B2T is available; lab access and integration remain pending.
+> Temporal context, neural models, LM search, word commitment, and runtime choices
+> are exploratory questions within this development.
 >
-> Headline: **42.42 % → 6.89 % WER on held-in validation sessions, fully incrementally**, with a
-> 123× margin against the per-frame latency budget. The oracle over the decoder's own 100-best is
-> 2.88 %, so the remaining gap is candidate *selection*, not search.
+> **Status (2026-09-22): integrated replay works on JakPC.**
+> [Paced released-feature replay and timestamped output tracing](model_training/benchmark/README.md)
+> connect the streaming GRU to the native n-gram decoder across two environments.
+> A two-trial development smoke passed streamed/offline equivalence checks.
+> This is integration validation; word latency and broader accuracy remain unmeasured.
+> Utterance-final rescoring remains a separate stage.
+> The former holdout influenced checkpoint selection; raw-feature causality and
+> independent evaluation remain unresolved for the corresponding scientific claims.
 >
-> - **[RESULTS.md](RESULTS.md)** — measured results, and the several confident predictions they
->   overturned (perplexity failing to predict WER four separate times; better phoneme accuracy
->   making word accuracy worse).
-> - **[brainstorm/](brainstorm/)** — planning, audit and research-proposal documents.
-> - Added code lives in `model_training/benchmark/` and `language_model/`; see RESULTS.md for a map.
+> - [Current plan](brainstorm/PLAN.md): milestones, open decisions, and first coding task.
+> - [Research assessment](RESEARCH_ASSESSMENT.md): evidence and limits on existing claims.
+> - [Recorded results](RESULTS.md): source-linked observations with qualifications.
+> - [Development environment](DEVELOPMENT_READY.md): the authoritative PC checkout.
 >
-> Validation is split into `val-dev` (tuning) and `val-test` (6 held-out sessions), and `val-test`
-> is deliberately untouched.
-
+> The upstream paper README follows unchanged.
 ---
 
 # An Accurate and Rapidly Calibrating Speech Neuroprosthesis

@@ -1,217 +1,99 @@
-# Real-time brain-to-text: measured results
+# Recorded B2T results
 
-This fork asks one question: **how accurate can this system be if the language-model stage is
-required to run incrementally, inside a real-time latency budget?**
+Historical artifact fields were checked on 2026-09-18. A separately labeled
+engineering smoke below was run on September 19 and verified September 22. See [the assessment](RESEARCH_ASSESSMENT.md) for validity limitations,
+[the current plan](brainstorm/PLAN.md) for next work, and
+[the original research record](docs/history/PLAN_2026-08.md) for historical gates.
 
-The published stack reaches 2.66 % WER, but its language-model stage costs **620–830 ms of
-finalization** — 4.4–5.9× the entire ~140 ms end-to-end budget — because it runs n-best
-rescoring and a 6.7B-parameter LLM after speech ends. Everything below runs **frame-by-frame with
-no batch stage**, and every number is measured on this repository's data.
+## Accuracy observations
 
-> **Status:** the LM stage is characterized end to end and the acoustic side has been probed.
-> `val-test` (173 trials, 6 held-out sessions) was **spent once, on 2026-08-08**, against the frozen
-> stack with nothing re-tuned — see [Held-out evaluation](#held-out-evaluation) below. Unless a row
-> says otherwise, WER figures are `val-dev` (1,253 trials, 35 sessions).
+| Configuration | Evaluation subset | WER (%) | Source under results/ |
+| --- | --- | ---: | --- |
+| Default 1-gram | All public validation, 1,426 trials | 42.4246 | stream_lm_la0_1gram.json: wer_percent |
+| Tuned incremental 4-gram | val-dev, 1,253 trials | 8.4934 | c28_general4g.json: wer_percent |
+| 4-gram + gpt2-large, full-utterance rescoring | Same val-dev | 6.8866 | c29_rescore_large_gamma.json: best.wer_percent |
+| Same rescored configuration, unseen sentences | val-dev unseen subset | 7.0872 | same: wer_unseen_rescored |
+| Incremental 4-gram | Former val-test, 173 trials | 18.8356 | valtest_decode.json: wer_percent |
+| + full-utterance rescoring | Same former val-test | 16.0959 | valtest_rescore.json: best.wer_percent |
+| Same rescored configuration, unseen sentences | Former val-test unseen subset | 19.3062 | same: wer_unseen_rescored |
+| R-D1a bandwidth control, re-tuned 4-gram | val-dev, 1,253 trials | 9.0733 | rd1a_decode.json: wer_percent |
 
----
+The 42.42-to-6.89 narrative mixed evaluation populations; it is not a paired
+val-dev improvement estimate. The 8.4934-to-6.8866 comparison uses the same subset
+but includes an utterance-final rescoring stage.
 
-## Headline
+The former val-test is not an independent end-to-end holdout: its sessions'
+validation flags were enabled in saved acoustic configurations and their trials
+contributed to checkpoint selection. They also have training trials from the same
+sessions. Later decoder settings were frozen for the first reported application,
+but that does not undo upstream selection. The subsequent top-10 experiment is
+exploratory. No further evaluation of that partition is authorized.
 
-| Stage | val-dev WER | What changed |
-|---|---|---|
-| Shipped 1-gram, default decode parameters | 42.42 % | the honest starting point |
-| + decode-parameter sweep | 35.51 % | free; no retraining |
-| + **4-gram language model** (built here) | **8.49 %** | the single largest change in the project |
-| + **neural n-best rescoring** (gpt2-large) | **6.89 %** | 29 % of the remaining oracle headroom |
+## Timing observations
 
-**42.42 % → 6.89 %, incrementally, with no batch stage.** Per-frame LM cost is p50 0.067 ms /
-p95 0.641 ms against a 79 ms per-frame budget — a 123× margin — versus 620–830 ms of batch
-finalization for the shipped stack.
+- 4-gram frame compute p95: 0.641249 ms, from
+  c28_general4g.json: per_frame_ms.p95. This is cached-logit decoder timing.
+- Development n-best extraction p95/max: 21.3004 / 285.6446 ms, from
+  c29_oracle_4gram.json: finalize_ms.
+- Development neural rescoring p95: 75.0503 ms, from
+  c29_rescore_large_gamma.json: latency_ms_per_utterance.p95.
+- Former val-test extraction p95: 62.3929 ms; neural rescoring p95: 95.4695 ms,
+  from valtest_nbest.json and valtest_rescore.json respectively.
 
-End-of-utterance finalization is ~96 ms p95 on val-dev, **but that figure does not survive the
-harder held-out sessions** (~158 ms p95, over budget) because finalization scales with candidate-list
-length. **The evaluated configuration fails its own latency constraint on held-out data** — see
-[Held-out evaluation](#held-out-evaluation). Truncating the n-best to 10 is the obvious mitigation
-and returns finalization to ~83 ms, but its held-out accuracy is unverified for the reason given
-there.
+The rescoring timing loop measures at most the first 50 utterances. The old
+approximately 96 ms / 158 ms figures add separate component percentiles; they are
+not measured percentiles of an integrated pipeline. They exclude endpoint waiting
+and cannot establish stable-word delay. The observed development extraction maximum
+alone exceeded the historical 140 ms threshold; an empirical maximum also does
+not constitute a hard real-time guarantee.
 
-The oracle over the 100-best is **2.88 %**, essentially the published 2.66 %. **The correct
-hypothesis is already in the list**; the remaining 4.0 points is a selection problem, not a search
-problem.
+## Findings that need qualification
 
----
+The archived R-D1a record reports 10.240% best PER versus 10.210% for the symmetric
+anchor and 10.040% for the narrower causal anchor. Training summaries were not
+recomputed during this review. Treat this as preliminary evidence that bandwidth
+matters, not proof that causality is free. One 0.041-point replicate difference
+does not define statistical equivalence.
 
-## Held-out evaluation
+Whole-block normalization is an inference in the historical audit, with unresolved
+clipping order. Exact recovery of raw causal features is unproven. The proposed
+absolute variance cutoff demonstrably breaks affine invariance.
 
-The six held-out sessions were decoded **once**, with every hyperparameter frozen at its
-val-dev-selected value and the rescoring grid pinned to a single point, so no selection could occur.
+Claims that all LM approaches are exhausted, that acoustic ties prove biological
+undecidability, or that a hand-classified oracle correction defines an achievable
+WER floor are withdrawn from the active summary. They exceed the tested evidence.
 
-| | val-dev (1,253) | **val-test (173)** |
-|---|---|---|
-| incremental 4-gram, 1-best | 8.49 % | 18.84 % |
-| + gpt2-large rescoring | 6.89 % | 16.10 % |
-| — **unseen** (the reportable row) | 7.09 % | **19.31 %**  *95 % CI [15.17, 23.49]* |
-| — seen | 4.01 % | 11.88 % |
-| headroom recovered by the rescorer | 29 % | **26 %** |
+## Engineering smoke — 2026-09-19, verified 2026-09-22
 
-**The rescorer transfers** — 26 % of oracle headroom recovered against 29 % on val-dev. The LM
-stage is not overfit to the tuning split.
+Source: results/paced_replay_smoke_20260919_02/{manifest.json,summary.json,
+output_trace.jsonl}. The manifest marks completion; trace and summary hashes
+match, and trace replay reproduces all summary fields derived from the trace.
 
-**The two splits are not comparable, and the difference is measured, not speculative:**
+The existing causal_la0 GRU and tuned 4-gram ran with fixed 20 ms feature arrivals
+in separate acoustic/LM processes. Selection was the first two enabled development
+validation trials, excluding former val-test day indices 39–44: one session
+(t15.2023.08.13), one participant, 33.18 seconds, 409 partial frame updates.
+Both streamed logits matched offline execution within 1e-3 (maximum observed error
+3.814697265625e-05); final native text matched exactly.
 
-1. **The held-out sessions are 2.03× harder acoustically** — per-session PER 21.06 % vs 10.39 %.
-   The WER/PER ratio is unchanged across splits, so this is harder data, not a tuning failure.
-2. **43.4 % of val-test references appear verbatim in the training transcriptions, against 6.9 % of
-   val-dev.** The aggregate is memorization-inflated; the unseen row is the only honest headline.
-3. The unseen subset is **98 trials / 663 words**, so the error bar is roughly **±4 points**.
-   Do not read val-test at finer resolution than that.
+Paired frame-window-availability-to-output lag p95 was 10.3931 and 10.3005 ms
+by trial, with maximum 11.4161 ms. These are summary.json:
+trials[*].paced.frame_window_to_output_ms, not sums of stage percentiles.
+There were zero observed 200 ms processing-budget exceedances out of 409 updates.
+The pooled raw-event p95 is 10.3510864 ms (linear percentile of
+(output_ready_ns - frame_window_available_ns)/1e6 for partial outputs).
+This boundary includes acoustic computation, synchronization, IPC, and native
+decoding; excludes raw acquisition/extraction, display, and word alignment.
+Loading, synthetic warmup, and trial reset are outside timed replay.
 
-**The headline held-out finding is a failure, not a pass: the evaluated operating point does not
-hold its own real-time constraint.** Harder data produces longer candidate lists (mean 52.1 vs
-30.6), and finalization scales with list length — full n-best reaches **~158 ms p95 on val-test,
-against the 140 ms budget**, where val-dev had suggested ~96 ms. The *accuracy* transferred; the
-*latency* did not. An accuracy-only evaluation would have reported a clean success.
+The tiny smoke had zero word edits over 17 reference words and no output revisions.
+Seen/unseen text was not stratified. This is a plumbing check, not a general WER
+estimate or evidence of improved accuracy. First nonempty output occurred 3.0084
+and 3.8848 seconds after trial start; these include recorded lead-in and are not
+aligned word delays. Endpoints were dataset-provided and no commitment policy ran.
 
-**A caveat we are obliged to state, because it limits what the mitigation is worth.** Truncating to
-the top-10 candidates returns finalization to ~83 ms and costs 0.15 points on val-test. But that
-number came from evaluating a **second** configuration on a **one-shot** split, which is precisely
-what a held-out set is not for. So:
-
-- **19.31 % unseen (full n-best) is a clean held-out result.** Nothing was tuned; it stands.
-- **19.46 % (top-10) is descriptive only** — a mitigation supported by val-dev whose held-out
-  accuracy is unverified, with no held-out set left to verify it.
-
-The underlying process error is that this evaluation pre-registered accuracy criteria and **no
-latency criterion**, even though the necessary scaling behaviour had already been measured on
-val-dev beforehand. It is recorded here rather than smoothed over.
-
----
-
-## What the measurements overturned
-
-Most of what was expected to help did not, and the reasons generalize.
-
-### Perplexity does not predict WER here — four times over
-
-| Change | Perplexity | WER effect |
-|---|---|---|
-| In-domain 4-gram (8k sentences) vs general | 4× **worse** | −19 pts **better** |
-| Interpolating in-domain into the general LM | better (91.5 vs 103.6) | **worse** on unseen sentences |
-| In-domain trigram re-ranking the 4-gram's n-best | — | **0.00 pts** |
-| Fine-tuning gpt2-large on in-domain text | **14× better** (395 → 27) | **worse** (7.09 → 7.42 unseen) |
-
-Restricting an LM's vocabulary acts as a domain prior that perplexity rewards and decoding does
-not. **Do not select a language model for this task on perplexity.**
-
-### In-domain adaptation buys memorization, not generalization
-
-6.94 % of `val-dev` sentences appear **verbatim** in the training transcriptions. Every in-domain
-technique tried looks good until that overlap is split out, at which point the gain lands almost
-entirely on the memorized sentences. All results here report **seen** and **unseen** subsets
-separately; the unseen row is the reportable one.
-
-### Better phoneme accuracy made word accuracy worse
-
-A regularization bundle (time masking + channel masking + full phase coverage) improved val PER
-**10.04 % → 9.43 %** — a strong pass against its ≤ 9.50 % gate — and made WER **worse**,
-8.49 % → 9.10 %. The masking made the posterior *sharper* (mean entropy 0.89 % → 0.86 % of
-maximum), leaving the beam fewer alternatives for the LM to repair. **PER is the wrong gate for a
-system whose deliverable is WER.**
-
-### The acoustic side is not where the error is
-
-| Change | WER effect |
-|---|---|
-| Temperature scaling | −0.05 |
-| Phase merging, interleaved 50 Hz | +0.46 (but buys L_buf 60 → 15 ms) |
-| Phase merging, phase-averaged | +0.69 |
-| Regularization bundle | +0.61 |
-
-The acoustic model occupies 60.3 ms of a 140 ms budget and is 40× under its compute ceiling.
-Every acoustic-side change measured so far is neutral or negative on WER, while the LM axis moved
-it 33 points.
-
----
-
-## The accuracy/latency frontier
-
-Rescoring is one batched forward pass per utterance, so it is cheap; the knobs are model size and
-how deep into the n-best list you score.
-
-| Configuration | val-dev WER | finalization p95 (val-dev) |
-|---|---|---|
-| no rescoring | 8.49 % | 6.1 ms |
-| gpt2-large, top-5 | 7.45 % | ~35 ms |
-| gpt2-large, top-10 | 7.35 % | ~37 ms |
-| **gpt2-large, full n-best — the evaluated point** | **6.89 %** | ~96 ms |
-
-Every point sits inside the 140 ms budget **on val-dev**. The oracle gain is spread *through* the
-list — going from ~30 candidates to 10 costs 9 points of headroom — and model size and list depth
-trade off against each other (gpt2-large@top-10 ≈ gpt2-small@full on both axes).
-
-**This whole table is a val-dev frontier, and its latency column does not transfer.** On the harder
-held-out sessions the lists grow (mean 52.1 vs 30.6) and every row's finalization cost rises with
-them — full n-best goes over budget there. Choosing a row on the basis of held-out latency is what
-compromised the top-10 number; see [Held-out evaluation](#held-out-evaluation).
-
-Scaling stops paying past ~800M parameters: Qwen2.5-1.5B is *worse* than gpt2-large at twice the
-parameters and 2.5× the latency (p95 190.9 ms, over budget).
-
----
-
-## Reproducing
-
-Environment setup is unchanged from upstream (`setup.sh`, `setup_lm.sh`). Beyond that, the LM
-decoder's command-line tools are **not** built by `setup_lm.sh` — see `language_model/build_tlg.sh`,
-which wires up SRILM and the six Kaldi FST binaries and is the entry point for building a language
-model.
-
-```bash
-# Build a 4-gram + TLG decoding graph from a text corpus
-cd language_model
-python fetch_corpus.py --target_gb 2            # stream an OpenWebText subset
-./build_tlg.sh <out_dir> <corpus.txt> 4 1e-8    # count, prune, compose
-
-# Measure it (two environments by necessity — see benchmark/stream_lm.py)
-cd ../model_training
-../.venv/bin/python benchmark/stream_lm.py export --val_metrics <val_metrics.pkl> --out results/logits.npz
-$(conda info --base)/envs/b2txt25_lm/bin/python benchmark/stream_lm.py \
-    decode --cache results/logits.npz --lm <out_dir>/data/lang_test --split dev
-
-# Neural rescoring
-../.venv/bin/python -m benchmark.neural_rescore --model gpt2-large --gammas 0.5,0.25,0.1
-```
-
-**Two traps that produce plausible-looking wrong answers**, both documented in the scripts:
-
-1. The LM recipe is **uppercase end to end**. Lowercase text fed to `ngram-count` maps every token
-   to `<unk>`, exits 0 in under two seconds, and yields three bigrams.
-2. When combining a neural LM with the n-gram, **sweep the n-gram's weight**. Adding the neural
-   score on top of a full-weight n-gram double-counts the language model; correcting it was worth
-   more than a 6× increase in parameters.
-
----
-
-## Layout of this fork's additions
-
-```
-model_training/
-  benchmark/stream_lm.py         incremental WFST driver; decode/sweep/nbest/rescore/temperature
-  benchmark/neural_rescore.py    n-best rescoring with any HF causal LM
-  benchmark/finetune_rescorer.py in-domain adaptation of a rescorer (measured, rejected)
-  benchmark/phase_ensemble.py    per-phase PER and the two phase-merge modes
-  benchmark/indomain_lm.py       trigram over the training transcriptions
-  causal_normalize.py            causal rolling normalization + its identity check
-  splits.py                      frozen val-dev / val-test session split
-language_model/
-  build_tlg.sh                   SRILM + Kaldi FST wiring; builds an n-gram and its TLG graph
-  fetch_corpus.py                streams and normalizes an LM corpus
-  make_tlg_from_arpa.sh          compose TLG from an existing ARPA
-  interpolate_lm.sh              LM interpolation with held-out lambda selection
-brainstorm/                      planning, audit and research-proposal documents
-```
-
-`brainstorm/` holds the exploratory material: the original optimization plan, a causality audit of
-the released features, a literature review, a candidate-change catalog, and `PLAN.md`, which is the
-working record of what was implemented, what was measured, and which predictions failed. It is kept
-because the failed predictions are more instructive than the successful ones.
+Native worker peak RSS was 8,403,160 KiB; peak allocated CUDA memory was
+405,696,000 bytes (summary.json: resources). The first attempt, retained as
+paced_replay_smoke_20260919_01, completed decoding but failed its 5-second teardown
+limit. The successful run used a separately bounded 60-second shutdown grace
+period. No training, full-data evaluation, or historical-result replacement occurred.

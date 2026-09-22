@@ -1,3 +1,5 @@
+> Historical evidence, not current instructions. Read ../../RESEARCH_ASSESSMENT.md for corrections. Links to removed proposal files are archival references recoverable from Git or .git/context-cleanup/2026-09-18/.
+
 # BUDGET.md — Phase C latency and compute accounting
 
 Confidence tags: **[M]** measured here, **[M-prior]** measured previously and re-verified from

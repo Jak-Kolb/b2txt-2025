@@ -1,3 +1,5 @@
+> Historical evidence, not current instructions. Read ../../RESEARCH_ASSESSMENT.md for corrections. Links to removed proposal files are archival references recoverable from Git or .git/context-cleanup/2026-09-18/.
+
 # LITERATURE.md — Phase B recon
 
 Retrieval date: **2026-08-04**. Every entry carries a URL and a date. Staleness is flagged

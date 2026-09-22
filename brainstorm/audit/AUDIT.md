@@ -1,3 +1,5 @@
+> Historical evidence, not current instructions. Read ../../RESEARCH_ASSESSMENT.md for corrections. Links to removed proposal files are archival references recoverable from Git or .git/context-cleanup/2026-09-18/.
+
 # AUDIT.md — Phase A pipeline forensics
 
 Scope: `Jak-Kolb/b2txt-2025` @ `main` (4617886), which is **ahead of** `origin/causal-preprocessing`

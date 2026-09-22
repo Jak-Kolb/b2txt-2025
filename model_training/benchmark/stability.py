@@ -1,16 +1,14 @@
 """Streaming stability metrics for a partial-hypothesis decoder.
 
 WER measures the final transcript. A streaming user reads the *partial* transcript, so
-the quantity they actually experience is how much it flickers before settling. No
-brain-to-text paper currently reports this.
+this module also measures display-position changes before retrospective stabilization.
 
 Two levels, because they behave completely differently:
 
 ACOUSTIC LEVEL (greedy CTC, no LM)
     The online collapse rule in common.update_online_ctc only ever appends, so the
     partial hypothesis is monotone in the prefix order: hyp_t is always a prefix of
-    hyp_{t+1}. Revisions are therefore ZERO BY CONSTRUCTION, and time-to-final equals
-    time-to-first-emission. verify_append_only() checks this empirically rather than
+    hyp_{t+1}. Revisions and the stabilization interval are ZERO BY CONSTRUCTION. verify_append_only() checks this empirically rather than
     trusting the argument.
 
 LM LEVEL (WFST beam search, partial best path)
@@ -21,16 +19,16 @@ LM LEVEL (WFST beam search, partial best path)
 
 Metrics reported per emitted word w:
     revisions(w)      number of times the token at w's position changed after the
-                      position was first occupied
+                      position was first occupied, including absence/reappearance
     ttf(w)            time-to-final: (frame w reached its final value)
                       - (frame w's position was first occupied), in ms
     ttfe(w)           time-to-first-emission: frame w's position was first occupied,
                       relative to utterance start, in ms
 
 and in aggregate:
-    flicker_rate      total revisions / total emitted words
-    ttf_p50/p95       the honest "when can the user trust this word" latency
-    unstable_frac     fraction of words revised at least once
+    flicker_rate      total position revisions / all ever-visible positions (version 2)
+    ttf_p50/p95       retrospective position stabilization, not an online guarantee
+    unstable_frac     fraction of ever-visible positions revised at least once
 
 Usage
     # acoustic-level, from saved validation logits (no GPU, no LM)
@@ -46,11 +44,16 @@ from __future__ import annotations
 
 import argparse
 import pickle
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
+
+try:
+    from .output_trace import WordTrace, trace_partials
+except ImportError:  # supports direct script execution
+    from output_trace import WordTrace, trace_partials
+
 
 try:
     from .common import BLANK_CLASS, resolve_path, write_json
@@ -69,10 +72,11 @@ def percentile(values, pct: float) -> float:
 
 
 def frame_to_ms(frame_idx: int, patch_size: int = 14, patch_stride: int = 4) -> float:
-    """Wall-clock ms at which frame `frame_idx` can first be emitted.
+    """Historical nominal bin-index time for a right-edge patch.
 
-    Frame f spans smoothed bins [s*f, s*f + P - 1] and is emitted the moment its last
-    bin arrives (right-edge emission, see rnn_model.py:112 and streaming_infer.py:218).
+    This is not measured wall-clock availability: smoothing lookahead, bin timestamp
+    convention, compute, and queues are not included. New output traces use actual
+    monotonic timestamps instead of assigning a clock from this geometry.
     """
     return (patch_stride * frame_idx + patch_size - 1) * BIN_SECONDS * 1000.0
 
@@ -80,46 +84,6 @@ def frame_to_ms(frame_idx: int, patch_size: int = 14, patch_stride: int = 4) -> 
 # --------------------------------------------------------------------------------------
 # Word-level stability (needs an LM that emits partial hypotheses)
 # --------------------------------------------------------------------------------------
-
-
-@dataclass
-class WordTrace:
-    """History of one position in the partial transcript."""
-
-    position: int
-    first_frame: int
-    final_frame: int
-    revisions: int
-    final_word: str
-    values: List[str] = field(default_factory=list)
-
-
-def trace_partials(partials: Sequence[Sequence[str]]) -> List[WordTrace]:
-    """Turn a per-frame sequence of partial hypotheses into per-position traces.
-
-    partials[t] is the full word list the decoder would have displayed after frame t.
-    """
-    traces: Dict[int, WordTrace] = {}
-    for frame, hypothesis in enumerate(partials):
-        for position, word in enumerate(hypothesis):
-            trace = traces.get(position)
-            if trace is None:
-                traces[position] = WordTrace(
-                    position=position,
-                    first_frame=frame,
-                    final_frame=frame,
-                    revisions=0,
-                    final_word=word,
-                    values=[word],
-                )
-            elif word != trace.final_word:
-                trace.revisions += 1
-                trace.final_word = word
-                trace.final_frame = frame
-                trace.values.append(word)
-
-    final = partials[-1] if partials else []
-    return [traces[p] for p in sorted(traces) if p < len(final)]
 
 
 def stability_metrics(
@@ -134,31 +98,36 @@ def stability_metrics(
     for traces in traces_per_trial:
         for trace in traces:
             revisions.append(trace.revisions)
+            if trace.final_word is None:
+                continue
             first = frame_to_ms(trace.first_frame, patch_size, patch_stride)
             final = frame_to_ms(trace.final_frame, patch_size, patch_stride)
             ttf_ms.append(final - first)
             ttfe_ms.append(first)
 
-    n_words = len(revisions)
-    if n_words == 0:
-        return {"n_words": 0}
+    n_positions = len(revisions)
+    n_words = len(ttf_ms)
+    if n_positions == 0:
+        return {"metric_version": 2, "n_words": 0, "n_positions": 0,
+                "n_trials": len(traces_per_trial), "total_revisions": 0}
 
     return {
-        "n_words": n_words,
+        "metric_version": 2, "n_words": n_words, "n_positions": n_positions,
+        "total_revisions": int(np.sum(revisions)),
         "n_trials": len(traces_per_trial),
-        "flicker_rate": float(np.sum(revisions) / n_words),
+        "flicker_rate": float(np.sum(revisions) / n_positions),
         "unstable_frac": float(np.mean(np.asarray(revisions) > 0)),
         "revisions_max": int(np.max(revisions)),
         "ttf_ms": {
-            "mean": float(np.mean(ttf_ms)),
-            "p50": percentile(ttf_ms, 50),
-            "p95": percentile(ttf_ms, 95),
-            "max": float(np.max(ttf_ms)),
+            "mean": float(np.mean(ttf_ms)) if ttf_ms else None,
+            "p50": percentile(ttf_ms, 50) if ttf_ms else None,
+            "p95": percentile(ttf_ms, 95) if ttf_ms else None,
+            "max": float(np.max(ttf_ms)) if ttf_ms else None,
         },
         "ttfe_ms": {
-            "mean": float(np.mean(ttfe_ms)),
-            "p50": percentile(ttfe_ms, 50),
-            "p95": percentile(ttfe_ms, 95),
+            "mean": float(np.mean(ttfe_ms)) if ttfe_ms else None,
+            "p50": percentile(ttfe_ms, 50) if ttfe_ms else None,
+            "p95": percentile(ttfe_ms, 95) if ttfe_ms else None,
         },
     }
 
