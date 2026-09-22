@@ -53,3 +53,9 @@ language_model/srilm-1.7.3/misc/src/SRILMversion.h
 # ---- corpora and language models (generated, large) ----
 language_model/corpus/
 language_model/generated_lm/
+
+CLAUDE.md
+AGENTS.md
+DEVELOPMENT_READY.md
+RESEARCH_ASSESSMENT.md
+RESUTLS.md
