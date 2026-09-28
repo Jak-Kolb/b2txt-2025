@@ -108,7 +108,7 @@ it reproduces event-derived metrics, not post-run accuracy/resource additions.
 
 The September 19 smoke in results/paced_replay_smoke_20260919_02 completed two
 trials and 409 updates. Streamed/offline logits and native final text agreed;
-per-trial processing-lag p95 was 10.39/10.30 ms. See ../../RESULTS.md for sources
+per-trial processing-lag p95 was 10.39/10.30 ms. See local results/RESULTS.md (from the repository root) for sources
 and limits. This verifies the released-feature integration boundary only.
 Raw-feature causality, speech-to-word delay, larger-sample accuracy, and lab ECoG
 integration remain unresolved. Keep traces private under ignored results paths.

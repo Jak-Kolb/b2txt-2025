@@ -16,9 +16,8 @@
 > independent evaluation remain unresolved for the corresponding scientific claims.
 >
 > - [Current plan](brainstorm/PLAN.md): milestones, open decisions, and first coding task.
-> - [Research assessment](RESEARCH_ASSESSMENT.md): evidence and limits on existing claims.
-> - [Recorded results](RESULTS.md): source-linked observations with qualifications.
-> - [Development environment](DEVELOPMENT_READY.md): the authoritative PC checkout.
+> Detailed measurements are kept locally in `results/RESULTS.md` alongside run
+> artifacts. Machine setup and agent notes are local-only.
 >
 > The upstream paper README follows unchanged.
 ---
