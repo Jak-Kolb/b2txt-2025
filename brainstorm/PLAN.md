@@ -127,6 +127,10 @@ before running. Lag-2/3 cost at most about 0.2 WER points but wait 4-5 s; stable
 that use more than word count (e.g. LM score margins or acoustic posteriors), which need decoder outputs
 beyond the recorded best path, and a defensible delay reference.
 
+**Causal Transformer — first full run 2026-09-28** (`harness train`; model.type=transformer). One 8 x 512
+configuration trained on la0's schedule is worse than the GRU in PER and WER, including after decode tuning
+and rescoring (results/RESULTS.md section 6). Further architecture work needs a specific question first.
+
 **Next development milestone:** design a bounded, session-spanning development
 baseline and an online word-commitment comparison. Define commitment/revision
 metrics before running the comparison; retain the existing no-commitment baseline

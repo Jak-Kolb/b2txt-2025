@@ -78,6 +78,21 @@ state, and the trainer's selection data) and optionally runs a standard benchmar
 given preset's LM and decode settings (flagged `decode_tuned_for_other_acoustic`). Records live
 in `results/harness/train/<id>/`. `--smoke-only` stops after the smoke.
 
+`--add` introduces keys the base config lacks. `model.type` selects the acoustic architecture
+(`model_training/model_factory.py`): `gru` (default) or `transformer`, a causal Transformer with the
+GRU's day layers and patching, ALiBi attention over a fixed window of frames, and a per-layer
+key/value cache for streaming (`model_training/transformer_model.py`):
+
+    .venv/bin/python -m harness train --from causal_la0 --name tfm_d512l8 \
+        --add model.type=transformer --add model.transformer.d_model=512 \
+        --add model.transformer.n_layers=8 --add model.transformer.n_heads=8 \
+        --add model.transformer.ffn_mult=4 --add model.transformer.dropout=0.2 \
+        --add model.transformer.window=64 --set lr_max=0.001 --set lr_max_day=0.001 \
+        --set epsilon=1e-8 --question "..." --then-bench la0_gen4g
+
+A newly trained model inherits the preset's decode settings, which were tuned for another model;
+sweep them (`sweep --acoustic NAME --lm gen4g --grid ...`) before comparing.
+
 ## Analyses of a run's saved outputs (no re-decoding of the acoustics)
 
 - **Error sources** (run page; cached under `cache/analysis/`): per reference word, the dataset's reference
@@ -100,7 +115,8 @@ in `results/harness/train/<id>/`. `--smoke-only` stops after the smoke.
   All val-dev numbers are exploratory development results, not independent evaluation.
 - `former-val-test-full` is refused unless `--allow-exposed "<reason>"` is given.
 - `smoke_limited`, `preprocess_mismatch`, `offline_noncausal` (no streaming/timing),
-  `decode_tuned_for_other_acoustic`, `decode_tuning_unrecorded`.
+  `decode_tuned_for_other_acoustic`, `decode_tuning_unrecorded`, and on rescoring records
+  `rescorer_tuned_for_other_acoustic`.
 - Intervals resample sessions: session-sampling uncertainty within the scope, not seed
   variability. Compare pipelines only on identical scope hashes (`compare` enforces this).
 

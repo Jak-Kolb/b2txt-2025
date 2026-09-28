@@ -8,8 +8,8 @@ The new trace path uses synthetic tests and does not require training.
     .venv/bin/python -m unittest discover -s tests -v
     /home/fishinjak/.miniforge3/envs/b2txt25_lm/bin/python -m unittest discover -s tests -v
 
-Verified 2026-09-22: 52 tests passed in .venv; 49 passed and three were skipped
-in the LM environment. Compile, paced-replay/worker CLI, and diff checks passed.
+Verified 2026-09-28: 121 tests passed in .venv; 49 passed and 13 were skipped
+in the LM environment (harness tests need the Python 3.10 stack).
 
 Offline tests use generated arrays, a fake LM worker, and a small random GRU.
 The legacy acoustic metric, actual GRU adapter, and HDF5 selector checks require
@@ -78,7 +78,9 @@ For an authorized bounded development run, use a fresh output directory:
       --device cuda --shutdown_timeout 60
 
 Defaults use the existing causal_la0 checkpoint, tuned 4-gram graph, and separate
-Python 3.9 native LM environment. This is a synchronous two-process baseline.
+Python 3.9 native LM environment. Models with a `stream_step` method (the causal Transformer)
+stream through their own key/value cache. The [harness](../../harness/README.md) runs this path
+for any registered model. This is a synchronous two-process baseline.
 The first N enabled validation trials exclude former val-test day indices 39–44.
 Overlong trials fail the bound rather than being silently truncated.
 

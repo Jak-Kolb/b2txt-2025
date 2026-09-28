@@ -6,12 +6,14 @@
 > Temporal context, neural models, LM search, word commitment, and runtime choices
 > are exploratory questions within this development.
 >
-> **Status (2026-09-22): integrated replay works on JakPC.**
+> **Status (2026-09-28): a pipeline harness benchmarks, compares, and replays decoders.**
 > [Paced released-feature replay and timestamped output tracing](model_training/benchmark/README.md)
-> connect the streaming GRU to the native n-gram decoder across two environments.
-> A two-trial development smoke passed streamed/offline equivalence checks.
-> This is integration validation; word latency and broader accuracy remain unmeasured.
-> Utterance-final rescoring remains a separate stage.
+> connect streaming acoustic models to the native n-gram decoder across two environments.
+> The [harness](harness/README.md) adds full val-dev benchmarks with a streaming timing check,
+> paired comparisons, decode sweeps, word-commitment and error-source analyses, n-best
+> rescoring, retraining (GRU or causal Transformer), and a live browser player.
+> Val-dev results are exploratory: checkpoints and decode settings were selected on it.
+> Word latency remains unmeasured (no word alignments); rescoring is utterance-final.
 > The former holdout influenced checkpoint selection; raw-feature causality and
 > independent evaluation remain unresolved for the corresponding scientific claims.
 >

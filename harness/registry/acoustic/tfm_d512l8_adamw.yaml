@@ -1,0 +1,29 @@
+name: tfm_d512l8_adamw
+checkpoint_dir: model_training/trained_models/tfm_d512l8_adamw_20260928T164517Z/checkpoint
+description: 'Fork of causal_la0: Does a causal Transformer (8x512, ALiBi, 64-frame
+  window; AdamW recipe chosen by a 4k-batch val-PER pilot) match or beat causal_la0
+  on val-dev WER at the same 120k-batch schedule and latency structure?'
+training:
+  config: /home/fishinjak/code/nejm-brain-to-text/results/harness/train/20260928T164517Z_tfm_d512l8_adamw/config.yaml
+  log: /home/fishinjak/code/nejm-brain-to-text/model_training/trained_models/tfm_d512l8_adamw_20260928T164517Z/training_log
+  forked_from: causal_la0
+  overrides:
+  - model.type=transformer
+  - model.transformer.d_model=512
+  - model.transformer.n_layers=8
+  - model.transformer.n_heads=8
+  - model.transformer.ffn_mult=4
+  - model.transformer.dropout=0.2
+  - model.transformer.window=64
+  - lr_max=0.001
+  - lr_max_day=0.001
+  - epsilon=1e-8
+  git_head: de4c8c5196eb24c18bf1c17dbf782c96652b6814
+  git_dirty: true
+  train_dir: /home/fishinjak/code/nejm-brain-to-text/results/harness/train/20260928T164517Z_tfm_d512l8_adamw
+selection:
+  rule: 'rnn_trainer best greedy-CTC val PER (ties: val loss) over all enabled val
+    sessions'
+  data:
+  - val-dev
+  - former-val-test
