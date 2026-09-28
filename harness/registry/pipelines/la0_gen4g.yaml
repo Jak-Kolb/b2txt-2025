@@ -1,0 +1,7 @@
+name: la0_gen4g
+description: "Reference: causal_la0 + general 4-gram (historical 8.49% val-dev on bf16 logits)."
+acoustic: causal_la0
+lm: gen4g
+decode: {}
+decode_tuned_on: inherit
+preprocess_override: null

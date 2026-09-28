@@ -2,6 +2,7 @@
 paths:
   - "model_training/benchmark/**"
   - "model_training/splits.py"
+  - "harness/**"
 ---
 
 # Measurement rules

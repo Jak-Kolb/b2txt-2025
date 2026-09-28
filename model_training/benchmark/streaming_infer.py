@@ -124,11 +124,15 @@ class StreamingDecoder:
         self.n_transformed = 0
         self.next_patch_start = 0
         self.n_emitted_frames = 0
-        self.hidden = self.model.h0.expand(
-            self.model.n_layers,
-            1,
-            self.model.n_units,
-        ).contiguous()
+        if hasattr(self.model, "stream_step"):
+            # Non-recurrent models (e.g. TransformerDecoder) carry their own streaming state.
+            self.hidden = self.model.initial_state()
+        else:
+            self.hidden = self.model.h0.expand(
+                self.model.n_layers,
+                1,
+                self.model.n_units,
+            ).contiguous()
 
         self.logit_frames: List[torch.Tensor] = []
         self.collapsed_tokens: List[int] = []
@@ -254,8 +258,11 @@ class StreamingDecoder:
         return frame_logits
 
     def _step_gru(self, gru_input: torch.Tensor) -> torch.Tensor:
-        output, self.hidden = self.model.gru(gru_input, self.hidden)
-        logits = self.model.out(output)
+        if hasattr(self.model, "stream_step"):
+            logits, self.hidden = self.model.stream_step(gru_input, self.hidden)
+        else:
+            output, self.hidden = self.model.gru(gru_input, self.hidden)
+            logits = self.model.out(output)
         frame_logits = logits[0, 0].float()
         self.n_emitted_frames += 1
         if self.keep_logits:

@@ -1,0 +1,7 @@
+name: la4_gen4g
+description: "80 ms lookahead model with la0-tuned decode settings (not re-swept)."
+acoustic: causal_la4
+lm: gen4g
+decode: {}
+decode_tuned_on: inherit
+preprocess_override: null

@@ -1,0 +1,7 @@
+name: baseline_gen4g
+description: "Upstream non-causal model; offline accuracy reference only."
+acoustic: pretrained_baseline
+lm: gen4g
+decode: {}
+decode_tuned_on: inherit
+preprocess_override: null

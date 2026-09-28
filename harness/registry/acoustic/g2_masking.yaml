@@ -1,0 +1,11 @@
+name: g2_masking
+checkpoint_dir: model_training/trained_models/g2_masking/checkpoint
+description: "la0 recipe with time/channel masking and random_cut 4."
+training:
+  config: model_training/trained_models/g2_masking/checkpoint/args.yaml
+  log: model_training/trained_models/g2_masking/training_log
+  forked_from: null
+  overrides: []
+selection:
+  rule: "rnn_trainer best greedy-CTC val PER (ties: val loss) over all enabled val sessions"
+  data: [val-dev, former-val-test]

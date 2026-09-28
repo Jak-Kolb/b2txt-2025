@@ -1,0 +1,6 @@
+name: indomain4g
+graph_dir: results/lm_indomain_4gram/data/lang_test
+description: "4-gram on training transcriptions only; largely memorizes seen sentences."
+expected_rss_gb: 1.0
+default_decode: {acoustic_scale: 1.0, blank_penalty: 30, beam: 17.0, lattice_beam: 8.0, max_active: 7000, min_active: 200, length_penalty: 0.0, blank_skip_thresh: 1.0}
+default_decode_tuned_on: {partition: val-dev, acoustic: causal_la0, artifact: results/c28_indomain4g.json}

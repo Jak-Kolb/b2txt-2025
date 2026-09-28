@@ -20,6 +20,7 @@ if str(MODEL_TRAINING_DIR) not in sys.path:
 
 from data_augmentations import gauss_smooth  # noqa: E402
 from rnn_model import GRUDecoder  # noqa: E402
+import model_factory  # noqa: E402
 
 BLANK_CLASS = 0
 BIN_SECONDS = 0.020
@@ -75,17 +76,7 @@ def clean_state_dict_keys(state_dict: Dict[str, torch.Tensor]) -> Dict[str, torc
 
 
 def build_model(args: Any) -> GRUDecoder:
-    return GRUDecoder(
-        neural_dim=args["model"]["n_input_features"],
-        n_units=args["model"]["n_units"],
-        n_days=len(args["dataset"]["sessions"]),
-        n_classes=args["dataset"]["n_classes"],
-        rnn_dropout=args["model"]["rnn_dropout"],
-        input_dropout=args["model"]["input_network"]["input_layer_dropout"],
-        n_layers=args["model"]["n_layers"],
-        patch_size=args["model"]["patch_size"],
-        patch_stride=args["model"]["patch_stride"],
-    )
+    return model_factory.build_model(args)
 
 
 def load_model(

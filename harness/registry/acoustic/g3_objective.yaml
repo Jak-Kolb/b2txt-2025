@@ -1,0 +1,11 @@
+name: g3_objective
+checkpoint_dir: model_training/trained_models/g3_objective/checkpoint
+description: "la0 recipe with day-layer LR/weight-decay changes (C22/C23)."
+training:
+  config: model_training/trained_models/g3_objective/checkpoint/args.yaml
+  log: model_training/trained_models/g3_objective/training_log
+  forked_from: null
+  overrides: []
+selection:
+  rule: "rnn_trainer best greedy-CTC val PER (ties: val loss) over all enabled val sessions"
+  data: [val-dev, former-val-test]

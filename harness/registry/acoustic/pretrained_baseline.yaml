@@ -1,0 +1,11 @@
+name: pretrained_baseline
+checkpoint_dir: model_training/trained_models/pretrained_baseline/checkpoint
+description: "Upstream released GRU; symmetric (non-causal) smoothing, offline reference only."
+training:
+  config: model_training/trained_models/pretrained_baseline/checkpoint/args.yaml
+  log: model_training/trained_models/pretrained_baseline/training_log
+  forked_from: null
+  overrides: []
+selection:
+  rule: upstream release; selection procedure not recorded here
+  data: [unknown]

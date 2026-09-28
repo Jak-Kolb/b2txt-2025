@@ -1,0 +1,7 @@
+name: la0_indomain4g
+description: "causal_la0 + in-domain 4-gram (seen/unseen split matters)."
+acoustic: causal_la0
+lm: indomain4g
+decode: {}
+decode_tuned_on: inherit
+preprocess_override: null

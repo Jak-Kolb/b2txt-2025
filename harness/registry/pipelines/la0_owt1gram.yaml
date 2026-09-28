@@ -1,0 +1,7 @@
+name: la0_owt1gram
+description: "causal_la0 + shipped 1-gram (small, fast to load)."
+acoustic: causal_la0
+lm: owt1gram
+decode: {}
+decode_tuned_on: inherit
+preprocess_override: null

@@ -185,6 +185,52 @@ def synthetic_warmup(model, args, device, day_index, lm):
     return dict(kind="synthetic_zero_features", n_bins=n_bins, n_frames=index)
 
 
+def replay_with_checks(selected, model, args, device, lm, writer, tolerance, log=print):
+    """Paced replay of each trial, then (after timing) the offline logit and native-text checks.
+
+    Returns per-trial records; `reference` and `words` are for callers that score text and are
+    not written by this module's CLI summary.
+    """
+    import torch
+    import h5py
+    try:
+        from .common import get_feature_subset, load_trial_features, offline_logits, sync_device
+    except ImportError:
+        from common import get_feature_subset, load_trial_features, offline_logits, sync_device
+    scores = []
+    for index, trial in enumerate(selected):
+        features, _attrs = load_trial_features(trial, get_feature_subset(args))
+        acoustic = AcousticAdapter(model, args, trial.day_idx, device)
+        sync_device(device)
+        result = replay_trial(
+            features, acoustic, lm, writer, trial_index=index, day_index=trial.day_idx,
+            patch_size=int(args["model"]["patch_size"]), patch_stride=int(args["model"]["patch_stride"]),
+            source=dict(session=trial.session, trial_key=trial.trial_key), keep_logits=True)
+        # References and the offline comparison are accessed only after the timed trial.
+        with h5py.File(trial.hdf5_path, "r") as handle:
+            encoded = handle[trial.trial_key]["transcription"][:]
+        reference = bytes(encoded[encoded > 0].astype(np.uint8)).decode("ascii").strip()
+        with torch.inference_mode():
+            offline = offline_logits(model, torch.as_tensor(features, device=device).unsqueeze(0),
+                                     trial.day_idx, args, device)[0].float().cpu().numpy()
+        streamed = np.stack(result["logits"]) if result["logits"] else np.empty_like(offline)
+        if offline.shape != streamed.shape:
+            raise AssertionError("Streaming/offline logit shapes differ")
+        max_error = float(np.max(np.abs(offline - streamed))) if offline.size else 0.0
+        if not max_error < tolerance:
+            raise AssertionError(f"Streaming/offline max error {max_error} exceeds tolerance")
+        offline_words = unpaced_decode(lm, offline)
+        if offline_words != result["words"]:
+            raise AssertionError("Native LM final text differs between streamed and offline logits")
+        rw, hw = norm_words(reference), norm_words(" ".join(result["words"]))
+        scores.append(dict(trial_index=index, day_index=trial.day_idx, n_frames=result["n_frames"],
+                           duration_seconds=result["duration_seconds"], ref_words=len(rw),
+                           edits=levenshtein(rw, hw), max_logit_error=max_error,
+                           offline_native_text_match=True, reference=reference, words=result["words"]))
+        log(f"Trial {index + 1}/{len(selected)} complete: {result['n_frames']} frames, equivalence passed")
+    return scores
+
+
 def select_development_trials(args, data_dir, n_trials, max_trial_seconds):
     """Deterministic first N eligible validation trials; never includes old val-test."""
     try:
@@ -245,15 +291,10 @@ def main():
     # Native acoustic imports stay out of Python 3.9 and lightweight protocol tests.
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     import torch
-    import h5py
     try:
-        from .common import (args_to_container, configure_fp32_inference, get_feature_subset,
-                             load_args, load_model, load_trial_features, offline_logits,
-                             select_device, sync_device)
+        from .common import args_to_container, configure_fp32_inference, load_args, load_model, select_device
     except ImportError:
-        from common import (args_to_container, configure_fp32_inference, get_feature_subset,
-                            load_args, load_model, load_trial_features, offline_logits,
-                            select_device, sync_device)
+        from common import args_to_container, configure_fp32_inference, load_args, load_model, select_device
     setup_start = time.monotonic()
     configure_fp32_inference()
     device = select_device(options.device)
@@ -294,7 +335,6 @@ def main():
     command = [options.lm_python, "-u", str(Path(__file__).with_name("lm_worker.py")),
                "--lm", str(Path(options.lm).resolve()), "--config", json.dumps(config),
                "--n_classes", str(args["dataset"]["n_classes"])]
-    scores = []
     trace_path = out_dir / "output_trace.jsonl"
     with LMClient(command, out_dir / "lm_worker.log", options.worker_timeout, options.startup_timeout,
                   shutdown_seconds=options.shutdown_timeout) as lm:
@@ -305,37 +345,9 @@ def main():
         metadata["setup_seconds"] = time.monotonic() - setup_start
         metadata["equivalence_tolerance"] = options.equivalence_tolerance
         with OutputTraceWriter(trace_path, metadata, schema_version=2) as writer:
-            for index, trial in enumerate(selected):
-                features, _attrs = load_trial_features(trial, get_feature_subset(args))
-                acoustic = AcousticAdapter(model, args, trial.day_idx, device)
-                sync_device(device)
-                result = replay_trial(
-                    features, acoustic, lm, writer, trial_index=index, day_index=trial.day_idx,
-                    patch_size=int(args["model"]["patch_size"]), patch_stride=int(args["model"]["patch_stride"]),
-                    source=dict(session=trial.session, trial_key=trial.trial_key), keep_logits=True)
-                # References and the offline comparison are accessed only after the timed trial.
-                with h5py.File(trial.hdf5_path, "r") as handle:
-                    encoded = handle[trial.trial_key]["transcription"][:]
-                reference = bytes(encoded[encoded > 0].astype(np.uint8)).decode("ascii").strip()
-                with torch.inference_mode():
-                    offline = offline_logits(model, torch.as_tensor(features, device=device).unsqueeze(0),
-                                             trial.day_idx, args, device)[0].float().cpu().numpy()
-                streamed = np.stack(result["logits"]) if result["logits"] else np.empty_like(offline)
-                if offline.shape != streamed.shape:
-                    raise AssertionError("Streaming/offline logit shapes differ")
-                max_error = float(np.max(np.abs(offline - streamed))) if offline.size else 0.0
-                if not max_error < options.equivalence_tolerance:
-                    raise AssertionError(f"Streaming/offline max error {max_error} exceeds tolerance")
-                offline_words = unpaced_decode(lm, offline)
-                if offline_words != result["words"]:
-                    raise AssertionError("Native LM final text differs between streamed and offline logits")
-                rw, hw = norm_words(reference), norm_words(" ".join(result["words"]))
-                scores.append(dict(trial_index=index, day_index=trial.day_idx, n_frames=result["n_frames"],
-                                   duration_seconds=result["duration_seconds"], ref_words=len(rw),
-                                   edits=levenshtein(rw, hw), max_logit_error=max_error,
-                                   offline_native_text_match=True))
-                print(f"Trial {index + 1}/{len(selected)} complete: {result['n_frames']} frames, equivalence passed",
-                      flush=True)
+            checked = replay_with_checks(selected, model, args, device, lm, writer, options.equivalence_tolerance,
+                                         log=lambda message: print(message, flush=True))
+            scores = [{k: v for k, v in s.items() if k not in ("reference", "words")} for s in checked]
         worker_rss = lm.peak_rss_kib
     report = summarize_trace(trace_path)
     ref_words = sum(s["ref_words"] for s in scores)

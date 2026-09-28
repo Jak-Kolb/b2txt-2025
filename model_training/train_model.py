@@ -7,9 +7,11 @@ import os
 # Must be set before torch is imported. Export the variable yourself to override.
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
+import sys
+
 from omegaconf import OmegaConf
 from rnn_trainer import BrainToTextDecoder_Trainer
 
-args = OmegaConf.load('rnn_args.yaml')
+args = OmegaConf.load(sys.argv[1] if len(sys.argv) > 1 else 'rnn_args.yaml')
 trainer = BrainToTextDecoder_Trainer(args)
 metrics = trainer.train()

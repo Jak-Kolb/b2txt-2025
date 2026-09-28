@@ -1,0 +1,6 @@
+name: owt1gram
+graph_dir: language_model/pretrained_language_models/openwebtext_1gram_lm_sil
+description: "Shipped OpenWebText 1-gram (13 MB TLG)."
+expected_rss_gb: 1.0
+default_decode: {acoustic_scale: 1.0, blank_penalty: 30, beam: 17.0, lattice_beam: 8.0, max_active: 7000, min_active: 200, length_penalty: 0.0, blank_skip_thresh: 1.0}
+default_decode_tuned_on: {partition: val-dev, acoustic: causal_la0, artifact: results/c15_sweep_coarse.json}

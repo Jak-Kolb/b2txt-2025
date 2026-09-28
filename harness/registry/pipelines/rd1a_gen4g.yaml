@@ -1,0 +1,7 @@
+name: rd1a_gen4g
+description: "rd1a with its own swept decode settings."
+acoustic: rd1a_bwmatched
+lm: gen4g
+decode: {acoustic_scale: 0.3, blank_penalty: 30}
+decode_tuned_on: {partition: val-dev, acoustic: rd1a_bwmatched, artifact: results/rd1a_sweep.json}
+preprocess_override: null

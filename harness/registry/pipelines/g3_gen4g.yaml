@@ -1,0 +1,7 @@
+name: g3_gen4g
+description: "g3 with its own swept decode settings."
+acoustic: g3_objective
+lm: gen4g
+decode: {acoustic_scale: 0.5, blank_penalty: 90}
+decode_tuned_on: {partition: val-dev, acoustic: g3_objective, artifact: results/g3_sweep.json}
+preprocess_override: null

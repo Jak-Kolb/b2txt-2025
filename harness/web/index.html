@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B2T harness</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="top">
+  <strong class="brand">B2T harness</strong>
+  <nav>
+    <a href="#/runs" data-nav="runs">Runs</a>
+    <a href="#/compare" data-nav="compare">Compare</a>
+    <a href="#/live" data-nav="live">Live</a>
+    <a href="#/train" data-nav="train">Training</a>
+  </nav>
+</header>
+<div class="banner" role="note">
+  Exploratory development scope: checkpoints were selected and decode settings tuned on val-dev;
+  endpoints are the dataset's trial ends (oracle); no independent evaluation.
+</div>
+<main id="view"></main>
+<div id="tooltip" class="tooltip" hidden></div>
+<script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

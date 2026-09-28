@@ -21,7 +21,7 @@ with access, task, data format, alignment, and baseline still unknown.
 The [September review](../RESEARCH_ASSESSMENT.md) limits particular claims and
 experiments; it does not freeze unrelated development. Original decisions and
 gates remain in the [August record](../docs/history/PLAN_2026-08.md).
-[RESULTS.md](../RESULTS.md) remains the source-linked observation summary.
+[Results summary (local)](../results/RESULTS.md) remains the source-linked observation summary.
 
 ## Development milestones
 
@@ -47,10 +47,19 @@ gates remain in the [August record](../docs/history/PLAN_2026-08.md).
    online endpoint detector actually produces them.
    The synchronous two-process baseline passed streamed/offline logit and final
    native-text checks on two development trials (one session, 409 frame updates).
-   See results/paced_replay_smoke_20260919_02/ and RESULTS.md. Input is paced at
+   See results/paced_replay_smoke_20260919_02/ and results/RESULTS.md. Input is paced at
    20 ms/bin; clocks include queueing, CUDA completion, IPC, and native decoding.
    Dataset endpoints remain oracle and no online commitment policy is implemented.
    Broader session coverage and statistical baseline characterization remain open.
+
+   **Harness — implemented 2026-09-23 (harness/README.md).** One registry of acoustic
+   models, LM graphs, and pipeline presets; a standard benchmark (full val-dev accuracy with
+   frame-stepped LM partials, plus an unpaced streaming timing check with structural delay,
+   service times, and queue-simulated lag); occasional 1x paced runs that calibrate the
+   simulation; a local viewer (leaderboard, paired compare, trial replay); a live player on
+   the paced replay path; and a `train` command that forks, smoke-tests, launches, registers,
+   and benchmarks a retrained model. It uses the development partition only and keeps
+   exposure, oracle-endpoint, and simulated-versus-measured labels on every number.
 
 3. **Establish and integrate the lab ECoG track.**
    With the user/lab, identify authorized storage/access, participants and sessions,

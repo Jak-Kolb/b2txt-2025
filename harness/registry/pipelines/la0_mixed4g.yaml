@@ -1,0 +1,7 @@
+name: la0_mixed4g
+description: "causal_la0 + interpolated 4-gram."
+acoustic: causal_la0
+lm: mixed4g
+decode: {}
+decode_tuned_on: inherit
+preprocess_override: null

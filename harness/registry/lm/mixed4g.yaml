@@ -1,0 +1,6 @@
+name: mixed4g
+graph_dir: results/lm_mixed_tlg/data/lang_test
+description: "General + in-domain interpolated 4-gram (lambda 0.3; 4.0 GB TLG)."
+expected_rss_gb: 8.6
+default_decode: {acoustic_scale: 0.35, blank_penalty: 90, beam: 17.0, lattice_beam: 8.0, max_active: 7000, min_active: 200, length_penalty: 0.0, blank_skip_thresh: 1.0}
+default_decode_tuned_on: {partition: val-dev, acoustic: causal_la0, artifact: results/c28_mixed_sweep.json}
