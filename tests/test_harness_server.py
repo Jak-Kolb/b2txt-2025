@@ -81,6 +81,17 @@ class ServerTests(AioHTTPTestCase):
         rows = await (await self.client.get("/api/runs")).json()
         self.assertIn("lm_fixed_pct", next(r for r in rows if r["run_id"] == self.full_a))
 
+    async def test_commitment_endpoint(self):
+        missing = await self.client.get(f"/api/runs/{self.full_b}/commitment")
+        self.assertEqual(missing.status, 404)
+        computed = await self.client.get(f"/api/runs/{self.full_b}/commitment?compute=1")
+        self.assertEqual(computed.status, 200)
+        policies = {p["policy"]: p for p in (await computed.json())["policies"]}
+        self.assertIn("lag-2", policies)
+        self.assertEqual(policies["none"]["commit_errors"]["early_commits"], 0)
+        again = await self.client.get(f"/api/runs/{self.full_b}/commitment")
+        self.assertEqual(again.status, 200)
+
     async def test_compare_same_scope_and_refusal(self):
         ok = await self.client.get(f"/api/compare?a={self.full_a}&b={self.full_b}")
         self.assertEqual(ok.status, 200)

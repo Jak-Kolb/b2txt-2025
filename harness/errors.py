@@ -217,7 +217,7 @@ def analyze_run(run_dir, data_dir, cache_root):
     if cache.exists():
         return json.loads(cache.read_text())
     manifest = json.loads((run_dir / "manifest.json").read_text())
-    if manifest.get("tier") != "standard" or "logits_cache" not in manifest:
+    if manifest.get("tier") not in ("standard", "sweep") or "logits_cache" not in manifest:
         raise ValueError("Error attribution needs a standard run (paced runs keep no logits)")
     with (run_dir / "trials.jsonl").open() as handle:
         rows = [json.loads(line) for line in handle]

@@ -171,6 +171,28 @@ def create_app(root=DEFAULT_ROOT, registry_root=registry.REGISTRY_DIR, live=None
         except (IndexError, ValueError):
             raise web.HTTPNotFound(text="No such trial")
 
+    async def commitment_view(request):
+        from . import commitment
+        directory = run_dir(request)
+        result = commitment.latest(directory.name, root)
+        if result is None and request.query.get("compute") == "1":
+            try:
+                result = await asyncio.to_thread(commitment.evaluate_run, directory)
+            except ValueError as exc:
+                raise web.HTTPNotFound(text=str(exc))
+            await asyncio.to_thread(commitment.save, result, root)
+        if result is None:
+            raise web.HTTPNotFound(text="No commitment evaluation yet")
+        return web.json_response(result)
+
+    async def rescoring(request):
+        from .rescore import latest
+        found = latest(run_dir(request).name, root)
+        if found is None:
+            raise web.HTTPNotFound(text="No rescoring for this run yet")
+        record, summary = found
+        return web.json_response(dict(record=record, summary=summary))
+
     async def compare(request):
         try:
             a = resolve_run(root, request.query["a"])
@@ -196,6 +218,8 @@ def create_app(root=DEFAULT_ROOT, registry_root=registry.REGISTRY_DIR, live=None
     app.router.add_get("/api/runs/{run_id}/trials/{index}/events", events)
     app.router.add_get("/api/runs/{run_id}/timing", timing)
     app.router.add_get("/api/runs/{run_id}/errors", errors)
+    app.router.add_get("/api/runs/{run_id}/commitment", commitment_view)
+    app.router.add_get("/api/runs/{run_id}/rescore", rescoring)
     app.router.add_get("/api/runs/{run_id}/trials/{index}/phonemes", phonemes)
     app.router.add_get("/api/compare", compare)
     app.router.add_get("/api/registry", registry_view)

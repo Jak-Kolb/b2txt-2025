@@ -12,6 +12,9 @@ with the acoustic environment; outputs go to ignored `results/harness/`.
     .venv/bin/python -m harness train --from causal_la0 --name wide1024 \
         --set model.n_units=1024 --question "Does width help?" --then-bench la0_gen4g
     .venv/bin/python -m harness train-status
+    .venv/bin/python -m harness sweep rd1a_gen4g --grid acoustic_scale=0.3,0.4 --grid blank_penalty=30,90
+    .venv/bin/python -m harness rescore RUN                 # GPT-2 n-best rescoring at trial end
+    .venv/bin/python -m harness commit RUN                  # word-commitment policies on recorded partials
 
 From the Mac: `ssh -L 8765:127.0.0.1:8765 jakpc`, then open http://127.0.0.1:8765.
 
@@ -74,6 +77,21 @@ success the supervisor registers `registry/acoustic/<name>.yaml` (provenance, qu
 state, and the trainer's selection data) and optionally runs a standard benchmark with the
 given preset's LM and decode settings (flagged `decode_tuned_for_other_acoustic`). Records live
 in `results/harness/train/<id>/`. `--smoke-only` stops after the smoke.
+
+## Analyses of a run's saved outputs (no re-decoding of the acoustics)
+
+- **Error sources** (run page; cached under `cache/analysis/`): per reference word, the dataset's reference
+  phonemes, the acoustic model's greedy phonemes (per-frame argmax, CTC-collapsed; a proxy for the acoustic
+  evidence), the LM's word and its lexicon pronunciation, tagged both correct / LM fixed / LM introduced /
+  both wrong, plus LM insertions. New standard runs store the totals in `summary.json`.
+- **Word commitment** (`commit`; run page): online stable-k and lag-n policies replayed over the recorded
+  partial outputs; committed words are never retracted. Reports final WER and paired cost, commit errors,
+  waiting from first appearance (nominal input clock; a proxy without word alignments), and visible revisions,
+  with a hindsight reference that is not an online policy.
+- **Decode sweeps** (`sweep`): one accuracy-only run (tier `sweep`) per grid point on cached logits, each
+  flagged `decode_tuning_unrecorded`.
+- **Rescoring** (`rescore`): n-best from the LM environment, a causal LM (registry `rescorer/`) scores every
+  candidate, frozen weights choose the final text. Reported as utterance-final WER, separate from the 1-best.
 
 ## Labels that travel with every number
 

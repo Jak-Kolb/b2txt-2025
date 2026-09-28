@@ -24,6 +24,7 @@ KINDS = {
            {"description", "expected_rss_gb", "default_decode_tuned_on"}),
     "pipelines": ({"name", "acoustic", "lm"},
                   {"description", "decode", "decode_tuned_on", "preprocess_override"}),
+    "rescorer": ({"name", "model", "nbest", "weights", "tuned_on"}, {"description"}),
 }
 
 

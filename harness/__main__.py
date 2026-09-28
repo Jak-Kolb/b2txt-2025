@@ -117,6 +117,68 @@ def cmd_train_supervise(options):
     raise SystemExit(train.supervise(options.train_dir, root=options.root))
 
 
+def cmd_sweep(options):
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+    from . import bench
+    from .store import utc_stamp, write_new_json
+    spec = registry.resolve(options.pipeline, acoustic=options.acoustic, lm=options.lm)
+    grid = {}
+    for item in options.grid:
+        key, _, values = item.partition("=")
+        grid[key.strip()] = [yaml.safe_load(v) for v in values.split(",")]
+    common = dict(root=options.root, device=options.device, lm_python=options.lm_python)
+    if options.data_dir:
+        common["data_dir"] = options.data_dir
+    try:
+        runs = bench.run_sweep(spec, grid, **common)
+    except BlockingIOError:
+        raise SystemExit("Another harness benchmark holds the job lock; wait for it to finish")
+    rows = []
+    for run_dir in runs:
+        manifest, summary, _ = bench.load_run(run_dir)
+        acc = summary["accuracy"]
+        rows.append(dict(run_id=manifest["run_id"], decode={k: manifest["pipeline"]["decode"][k] for k in grid},
+                         wer=acc["wer"]["percent"], ci95=acc["wer"]["ci95"], attribution=acc.get("error_attribution")))
+    path = options.root and os.path.join(options.root, "sweeps", f"{utc_stamp()}_{spec['name']}.json")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    write_new_json(path, dict(pipeline=spec["name"], acoustic=spec["acoustic"]["name"], lm=spec["lm"]["name"],
+                              grid=grid, points=rows, note="decode settings explored on val-dev (exposed)"))
+    for r in sorted(rows, key=lambda r: r["wer"]):
+        a = r["attribution"] or {}
+        print(f"{r['decode']}  WER {fmt(r['wer'])} [{fmt(r['ci95'][0])}, {fmt(r['ci95'][1])}]  "
+              f"LM fixed {fmt(a.get('pct_acoustic_word_errors_fixed_by_lm'), 1)}%  "
+              f"errors w/ exact phonemes {fmt(a.get('pct_word_errors_with_exact_phonemes'), 1)}%  {r['run_id']}")
+    print(f"saved {path}")
+
+
+def cmd_rescore(options):
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+    from .rescore import rescore_run
+    rescore_run(resolve_run(options.root, options.run), options.rescorer, root=options.root,
+                device=options.device, lm_python=options.lm_python)
+
+
+def cmd_commit(options):
+    from . import commitment
+    result = commitment.evaluate_run(resolve_run(options.root, options.run))
+    path = commitment.save(result, options.root)
+    print(f"{result['pipeline']} · {result['scope']['name']} ({result['scope']['n_trials']} trials) · {result['run_id']}")
+    header = ["policy", "WER%", "dWER vs none [95% CI]", "commit err%", "early%", "wait p50/p95 ms",
+              "before end p50 ms", "revisions/100w"]
+    rows = []
+    for r in result["policies"]:
+        d = r.get("delta_wer_vs_none")
+        rows.append([r["policy"], fmt(r["wer"]["percent"]),
+                     "-" if not d else f"{d['points']:+.2f} [{d['ci95'][0]:+.2f}, {d['ci95'][1]:+.2f}]",
+                     fmt(r["commit_errors"]["pct"]), fmt(r["early_commit_pct"], 1),
+                     f"{fmt(r['waiting_ms']['p50'], 0)}/{fmt(r['waiting_ms']['p95'], 0)}",
+                     fmt(r["committed_before_trial_end_ms"]["p50"], 0), fmt(r["visible_revisions_per_100_words"], 1)])
+    widths = [max(len(str(x[i])) for x in rows + [header]) for i in range(len(header))]
+    for row in [header] + rows:
+        print("  ".join(str(v).ljust(w) for v, w in zip(row, widths)))
+    print(f"saved {path}\n" + "\n".join(f"  {k}: {v}" for k, v in result["definitions"].items()))
+
+
 def cmd_serve(options):
     from .server import main as serve
     serve(options)
@@ -171,6 +233,27 @@ def parser():
     supervise = sub.add_parser("train-supervise", help=argparse.SUPPRESS)
     supervise.add_argument("train_dir")
     supervise.set_defaults(func=cmd_train_supervise)
+
+    sweep = sub.add_parser("sweep", help="Accuracy-only runs over a grid of decode settings (cached logits)")
+    sweep.add_argument("pipeline", nargs="?")
+    sweep.add_argument("--acoustic")
+    sweep.add_argument("--lm")
+    sweep.add_argument("--grid", action="append", required=True, metavar="KEY=V1,V2,...")
+    sweep.add_argument("--device", default="cuda")
+    sweep.add_argument("--data-dir")
+    sweep.add_argument("--lm-python", default="/home/fishinjak/.miniforge3/envs/b2txt25_lm/bin/python")
+    sweep.set_defaults(func=cmd_sweep)
+
+    rescore = sub.add_parser("rescore", help="Neural n-best rescoring at trial end (finalization) for a run")
+    rescore.add_argument("run")
+    rescore.add_argument("--rescorer", default="gpt2large")
+    rescore.add_argument("--device", default="cuda")
+    rescore.add_argument("--lm-python", default="/home/fishinjak/.miniforge3/envs/b2txt25_lm/bin/python")
+    rescore.set_defaults(func=cmd_rescore)
+
+    commit = sub.add_parser("commit", help="Evaluate word-commitment policies on a standard run's partial outputs")
+    commit.add_argument("run")
+    commit.set_defaults(func=cmd_commit)
 
     serve = sub.add_parser("serve", help="Local web viewer and live player (127.0.0.1)")
     serve.add_argument("--port", type=int, default=8765)

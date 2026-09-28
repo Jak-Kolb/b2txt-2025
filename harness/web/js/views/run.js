@@ -37,10 +37,22 @@ export async function runView(main, runId) {
   sections.push(el("h2", { text: "Configuration" }), configSection(manifest, accuracy));
   const trialsCard = el("div", { class: "card" }, el("div", { class: "empty", text: "Loading trials…" }));
   const errorsCard = el("div", { class: "card" }, el("div", { class: "sub", text: "Aligning phonemes and words…" }));
-  if (manifest.tier === "standard") sections.push(el("h2", { text: "Where word errors come from: phonemes vs language model" }), errorsCard);
+  const replayable = manifest.tier === "standard" || manifest.tier === "sweep";
+  if (replayable) sections.push(el("h2", { text: "Where word errors come from: phonemes vs language model" }), errorsCard);
+  const rescoreCard = el("div", { class: "card" });
+  if (replayable) {
+    sections.push(el("h2", { text: "Finalization: neural rescoring at trial end" }), rescoreCard);
+    getJSON(`/api/runs/${encodeURIComponent(runId)}/rescore`).then((r) => renderRescore(rescoreCard, r))
+      .catch(() => rescoreCard.replaceChildren(el("div", { class: "sub", text: `Not rescored yet: .venv/bin/python -m harness rescore ${runId}` })));
+  }
+  const commitCard = el("div", { class: "card" });
+  if (replayable) {
+    sections.push(el("h2", { text: "Word commitment: when can a word be shown as final?" }), commitCard);
+    loadCommitment(commitCard, runId, false);
+  }
   sections.push(el("h2", { text: "Trials" }), trialsCard);
   main.replaceChildren(...header.filter(Boolean), ...sections);
-  const attribution = manifest.tier === "standard"
+  const attribution = replayable
     ? getJSON(`/api/runs/${encodeURIComponent(runId)}/errors`).catch(() => null) : Promise.resolve(null);
   attribution.then((result) => renderAttribution(errorsCard, result));
   renderTrials(trialsCard, runId, attribution);
@@ -159,6 +171,58 @@ function renderAttribution(card, result) {
         el("td", { class: "sub", text: meaning })))))),
     el("div", { class: "sub", text: `${a.label}. ${a.trials_skipped ? `${a.trials_skipped} trials skipped (reference words and phoneme groups differ in count). ` : ""}`
       + "Open a trial to see phonemes and words side by side." }));
+}
+
+function renderRescore(card, { record, summary }) {
+  const d = summary.delta_vs_one_best, w = summary.wer;
+  card.replaceChildren(
+    el("div", { class: "tiles" },
+      tile("Rescored WER (utterance-final)", `${fmt(w.percent, 2)}%`, `95% CI ${fmtCI(w.ci95)} · ${record.rescorer.model}`),
+      tile("Change vs 1-best", `${d.points >= 0 ? "+" : ""}${fmt(d.points, 2)} pts`, `95% CI ${fmtCI(d.ci95)} · ${d.trials_better} better / ${d.trials_worse} worse`),
+      tile("N-best oracle WER", `${fmt(summary.oracle_wer, 2)}%`, `best candidate in each ${record.rescorer.nbest}-best list`),
+      tile("Neural scoring per utterance", `${fmt(summary.latency.neural_scoring_ms_per_utterance.p50, 0)} / ${fmt(summary.latency.neural_scoring_ms_per_utterance.p95, 0)} ms`,
+        `p50 / p95; n-best extraction p95 ${fmt(summary.latency.nbest_finalize_ms.p95, 1)} ms (not summed)`)),
+    el("div", { class: "sub", text: `${record.label}. Weights ${JSON.stringify(record.rescorer.weights)}; unseen text ${fmt(summary.seen_unseen.unseen.percent, 2)}%. `
+      + `Self-check: identity weights reproduce the run's 1-best on ${summary.self_check.identity_weights_reproduce_run_1best}/${summary.self_check.n_trials} trials.` }),
+    flagBadges(record.flags.filter((f) => f.startsWith("rescorer"))));
+}
+
+async function loadCommitment(card, runId, compute) {
+  card.replaceChildren(el("div", { class: "sub", text: compute ? "Evaluating policies on the recorded partial outputs (about 20 s)…" : "Loading…" }));
+  let result;
+  try {
+    result = await getJSON(`/api/runs/${encodeURIComponent(runId)}/commitment${compute ? "?compute=1" : ""}`);
+  } catch {
+    card.replaceChildren(el("div", { class: "row" },
+      el("span", { class: "sub", text: "Not evaluated yet. Replays each online commitment policy over this run's recorded partial outputs (CPU only)." }),
+      el("button", { class: "primary", onclick: () => loadCommitment(card, runId, true) }, "Evaluate commitment policies")));
+    return;
+  }
+  const rows = result.policies.filter((p) => p.online && p.policy !== "none" && p.delta_wer_vs_none)
+    .sort((a, b) => a.waiting_ms.p50 - b.waiting_ms.p50);
+  const none = result.policies.find((p) => p.policy === "none");
+  card.replaceChildren(
+    el("div", { class: "sub", text: "Online policies see only the partial outputs so far; committed words are never retracted. "
+      + "Cost is the paired WER change against showing nothing until the (oracle) trial end. Waiting is measured from a word's first appearance "
+      + "on the nominal input clock (a proxy; the release has no word timings)." }),
+    dotPlot(rows.map((p) => ({ label: `${p.policy} · ${fmt(p.waiting_ms.p50 / 1000, 1)} s`, value: p.delta_wer_vs_none.points,
+                               interval: p.delta_wer_vs_none.ci95, row: p })), {
+      valueLabel: "Δ WER points vs no commitment (95% CI, sessions)", reference: 0, referenceLabel: "no cost",
+      tooltip: (r) => [[`${r.value >= 0 ? "+" : ""}${fmt(r.value, 2)} pts`, r.row.policy],
+                       [`${fmt(r.row.commit_errors.pct, 2)}%`, "committed words the decoder later changed"],
+                       [`${fmt(r.row.waiting_ms.p50, 0)} ms`, "median wait after first appearance"]] }),
+    el("div", { class: "table-wrap" }, el("table", {},
+      el("thead", {}, el("tr", {}, ["Policy", "WER %", "Δ vs none [95% CI]", "Commit errors", "Committed early", "Wait p50 / p95", "Final before trial end (p50)", "Revisions /100w"]
+        .map((h, i) => el("th", { class: i ? "num" : "", text: h })))),
+      el("tbody", {}, [none, ...rows, result.policies.find((p) => !p.online)].filter(Boolean).map((p) => el("tr", {},
+        el("td", { text: p.policy }), el("td", { class: "num", text: fmt(p.wer.percent, 2) }),
+        el("td", { class: "num", text: p.delta_wer_vs_none ? `${p.delta_wer_vs_none.points >= 0 ? "+" : ""}${fmt(p.delta_wer_vs_none.points, 2)} [${fmt(p.delta_wer_vs_none.ci95[0], 2)}, ${fmt(p.delta_wer_vs_none.ci95[1], 2)}]` : "–" }),
+        el("td", { class: "num", text: p.commit_errors.pct == null ? "–" : `${fmt(p.commit_errors.pct, 2)}%` }),
+        el("td", { class: "num", text: `${fmt(p.early_commit_pct, 1)}%` }),
+        el("td", { class: "num", text: `${fmt(p.waiting_ms.p50 / 1000, 2)} / ${fmt(p.waiting_ms.p95 / 1000, 2)} s` }),
+        el("td", { class: "num", text: `${fmt(p.committed_before_trial_end_ms.p50 / 1000, 2)} s` }),
+        el("td", { class: "num", text: fmt(p.visible_revisions_per_100_words, 1) })))))),
+    el("div", { class: "sub", text: `Evaluated ${result.created.slice(0, 16).replace("T", " ")} UTC. The hindsight row is not an online policy: it commits each word when it last changed. ${result.definitions.exposure}.` }));
 }
 
 function sourceTable(rows) {

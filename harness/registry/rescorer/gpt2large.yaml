@@ -1,0 +1,6 @@
+name: gpt2large
+description: "GPT-2 Large (774M) rescoring of the 4-gram 100-best at trial end (finalization only)"
+model: gpt2-large
+nbest: 100
+weights: {gamma: 0.25, alpha: 1.0, beta: 0.0}
+tuned_on: {partition: val-dev, acoustic: causal_la0, lm: gen4g, artifact: results/c29_rescore_large_gamma.json}

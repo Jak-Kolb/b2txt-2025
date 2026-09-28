@@ -91,6 +91,19 @@ class BenchTests(unittest.TestCase):
         self.assertLess(equivalence["max_logit_error"], 1e-3)
         self.assertEqual(equivalence["final_text_mismatches"], [])
 
+    def test_sweep_runs_one_record_per_grid_point(self):
+        spec = registry.resolve("tiny_fake", root=self.registry)
+        runs = bench.run_sweep(spec, {"acoustic_scale": [0.4, 0.5], "blank_penalty": [2]}, root=self.results,
+                               data_dir=self.data, device="cpu", lm_python=sys.executable, log=lambda *_: None)
+        self.assertEqual(len(runs), 2)
+        manifests = [bench.load_run(r)[0] for r in runs]
+        self.assertEqual({m["tier"] for m in manifests}, {"sweep"})
+        self.assertEqual([m["pipeline"]["decode"]["acoustic_scale"] for m in manifests], [0.4, 0.5])
+        self.assertTrue(all(m["pipeline"]["decode"]["blank_penalty"] == 2.0 for m in manifests))
+        self.assertTrue(all("decode_tuning_unrecorded" in m["flags"] for m in manifests))
+        self.assertTrue(manifests[0]["pipeline"]["name"].startswith("tiny_fake@acoustic_scale=0.4"))
+        self.assertIn("error_attribution", bench.load_run(runs[0])[1]["accuracy"])
+
     def test_noncausal_skips_timing_check(self):
         run = self.run_bench("sym_fake")
         manifest, summary, _ = bench.load_run(run)

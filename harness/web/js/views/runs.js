@@ -71,7 +71,7 @@ export async function runsView(main) {
   }
 
   const tierSelect = el("select", { onchange: (e) => { state.tier = e.target.value; render(); } },
-    ["all", "standard", "paced"].map((t) => el("option", { value: t, text: `Tier: ${t}` })));
+    ["all", "standard", "sweep", "paced"].map((t) => el("option", { value: t, text: `Tier: ${t}` })));
   const smoke = el("label", {}, el("input", { type: "checkbox", onchange: (e) => { state.showSmoke = e.target.checked; render(); } }),
     " show smoke runs");
   main.replaceChildren(

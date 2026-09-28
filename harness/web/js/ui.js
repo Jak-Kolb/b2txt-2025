@@ -42,6 +42,7 @@ export const FLAG_TEXT = {
   offline_noncausal: "Non-causal smoothing: offline accuracy reference only, no timing",
   exposed_partition: "Former val-test: influenced checkpoint selection (exposed)",
   smoke_limited: "Smoke run on a limited trial subset",
+  rescorer_tuned_for_other_acoustic: "Rescoring weights were tuned with a different acoustic model",
 };
 const WARN_FLAGS = new Set(["preprocess_mismatch", "offline_noncausal", "exposed_partition", "smoke_limited",
                             "decode_tuned_for_other_acoustic", "decode_tuning_unrecorded"]);

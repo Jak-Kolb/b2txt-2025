@@ -121,6 +121,12 @@ deadline misses and timing coverage; observed maxima do not establish hard bound
 - **Lab track:** metadata/access questions block its data integration, not B2T work.
   No collaborator messages, data transfers, or downloads follow automatically.
 
+**Commitment baseline — first pass 2026-09-28** (`python -m harness commit RUN`; run page section): online
+stable-k and lag-n policies replayed on recorded partials of the full val-dev la0 run, with metrics defined
+before running. Lag-2/3 cost at most about 0.2 WER points but wait 4-5 s; stable-k is costly. Next: policies
+that use more than word count (e.g. LM score margins or acoustic posteriors), which need decoder outputs
+beyond the recorded best path, and a defensible delay reference.
+
 **Next development milestone:** design a bounded, session-spanning development
 baseline and an online word-commitment comparison. Define commitment/revision
 metrics before running the comparison; retain the existing no-commitment baseline

@@ -180,7 +180,7 @@ def fail(run_dir, manifest, exc):
 
 def run_standard(spec, *, root=DEFAULT_ROOT, data_dir=DATA_DIR, scope_name="val-dev-full", limit=None,
                  allow_exposed=None, timing_check=True, device="cuda", lm_python=DEFAULT_LM_PYTHON,
-                 log=print):
+                 log=print, tier="standard"):
     root = Path(root)
     hasher = HashCache(root)
     identity = registry.identity(spec, hasher)
@@ -195,8 +195,8 @@ def run_standard(spec, *, root=DEFAULT_ROOT, data_dir=DATA_DIR, scope_name="val-
         timing_scope = build_scope("val-dev-sample", data_dir, limit, None, hasher)
     flags = registry.flags(spec, scope["partition"], limited=limit is not None)
     with flocked(lock_path(root, "job"), blocking=False):
-        run_dir = new_run_dir(root, spec["name"], "standard")
-        manifest = base_manifest(run_dir, "standard", spec, identity, scope, flags, lm_python)
+        run_dir = new_run_dir(root, spec["name"], tier)
+        manifest = base_manifest(run_dir, tier, spec, identity, scope, flags, lm_python)
         manifest["timing_scope"] = scope_record(timing_scope) if timing_scope else None
         write_new_json(run_dir / "manifest.json", manifest)
         log(f"Run {run_dir.name}: {scope['n_trials']} trials ({scope['name']}); flags {flags}")
@@ -235,7 +235,7 @@ def run_standard(spec, *, root=DEFAULT_ROOT, data_dir=DATA_DIR, scope_name="val-
                 timing = dict(skipped=skip_reason)
             from .errors import analyze
             accuracy["error_attribution"] = analyze(rows, cache_dir / "logits.npz", spec, data_dir)["summary"]
-            summary = dict(schema="harness_summary_v1", run_id=run_dir.name, tier="standard",
+            summary = dict(schema="harness_summary_v1", run_id=run_dir.name, tier=tier,
                            pipeline=spec["name"], pipeline_hash=identity["pipeline_hash"],
                            scope=dict(name=scope["name"], hash=scope["hash"], partition=scope["partition"],
                                       n_trials=scope["n_trials"], n_sessions=scope["n_sessions"],
@@ -371,3 +371,21 @@ def compare_runs(dir_a, dir_b):
                   scope_hash=manifest_a["scope"]["hash"],
                   flags_a=manifest_a["flags"], flags_b=manifest_b["flags"])
     return result
+
+
+def run_sweep(spec, grid, *, log=print, **kwargs):
+    """One accuracy-only benchmark per decode-setting combination (tier "sweep"); returns run dirs.
+
+    Each point is an ordinary run record (trials, traces, attribution, commitment), flagged
+    decode_tuning_unrecorded because the settings are being explored on the scope itself.
+    """
+    import itertools
+    keys = list(grid)
+    runs = []
+    for values in itertools.product(*(grid[k] for k in keys)):
+        decode = registry.check_decode(dict(zip(keys, values)), complete=False)
+        point = dict(spec, decode={**spec["decode"], **decode}, decode_tuned_on=None,
+                     name=f"{spec['name']}@" + ",".join(f"{k}={v:g}" for k, v in decode.items()))
+        log(f"Sweep point {decode}")
+        runs.append(run_standard(point, timing_check=False, tier="sweep", log=log, **kwargs))
+    return runs
