@@ -13,7 +13,7 @@ import json
 import pickle
 
 from dataset import BrainToTextDataset, train_test_split_indicies
-from data_augmentations import gauss_smooth, time_mask, channel_mask
+from data_augmentations import gauss_smooth, time_mask, time_mask_per_trial, per_trial_time_spans, channel_mask
 
 import torchaudio.functional as F # for edit distance
 from omegaconf import OmegaConf
@@ -47,6 +47,7 @@ class BrainToTextDecoder_Trainer:
 
         self.best_val_PER = torch.inf # track best PER for checkpointing
         self.best_val_loss = torch.inf # track best loss for checkpointing
+        self.mask_coverage = [] # realized time-mask coverage per trial since the last train log (per_trial mode)
 
         self.train_dataset = None 
         self.val_dataset = None 
@@ -377,18 +378,19 @@ class BrainToTextDecoder_Trainer:
 
         self.logger.info("Loaded model from checkpoint: " + load_path)
 
-    def save_model_checkpoint(self, save_path, PER, loss):
+    def save_model_checkpoint(self, save_path, PER, loss, include_optimizer = True):
         '''
-        Save a training checkpoint
+        Save a training checkpoint (include_optimizer=False: weights only, for evaluation snapshots)
         '''
 
         checkpoint = {
             'model_state_dict' : self.model.state_dict(),
-            'optimizer_state_dict' : self.optimizer.state_dict(),
-            'scheduler_state_dict' : self.learning_rate_scheduler.state_dict(),
             'val_PER' : PER,
             'val_loss' : loss
         }
+        if include_optimizer:
+            checkpoint['optimizer_state_dict'] = self.optimizer.state_dict()
+            checkpoint['scheduler_state_dict'] = self.learning_rate_scheduler.state_dict()
         
         torch.save(checkpoint, save_path)
         
@@ -479,12 +481,30 @@ class BrainToTextDecoder_Trainer:
         # applied here, the model sees exactly the gaps we intend. Train-only, and .get() keeps
         # older configs (the reference checkpoints' args.yaml) loadable.
         if mode == 'train':
+            # time_mask_mode 'shared' (default) keeps the original C17 semantics for existing configs;
+            # 'per_trial' is the published treatment (each span up to max_frac of the trial's valid length,
+            # zeroed input bins, the paper's GRU variant); 'per_trial_frames' masks output frames with the
+            # model's learned token instead (the paper's Transformer variant; applied in train(), not here).
             if self.transform_args.get('time_mask_n', 0) > 0:
-                features = time_mask(
-                    features,
-                    n_masks  = self.transform_args['time_mask_n'],
-                    max_frac = self.transform_args.get('time_mask_max_frac', 0.075),
-                    )
+                mask_mode = self.transform_args.get('time_mask_mode', 'shared')
+                if mask_mode == 'per_trial':
+                    features, coverage = time_mask_per_trial(
+                        features,
+                        lengths  = n_time_steps,
+                        n_masks  = self.transform_args['time_mask_n'],
+                        max_frac = self.transform_args.get('time_mask_max_frac', 0.075),
+                        )
+                    self.mask_coverage.append(coverage.detach())
+                elif mask_mode == 'shared':
+                    features = time_mask(
+                        features,
+                        n_masks  = self.transform_args['time_mask_n'],
+                        max_frac = self.transform_args.get('time_mask_max_frac', 0.075),
+                        )
+                elif mask_mode == 'per_trial_frames':
+                    pass
+                else:
+                    raise ValueError(f"Unknown time_mask_mode: {mask_mode}")
             if self.transform_args.get('channel_mask_rate', 0) > 0:
                 features = channel_mask(
                     features,
@@ -515,6 +535,19 @@ class BrainToTextDecoder_Trainer:
 
         early_stopping_val_steps = self.args['early_stopping_val_steps']
 
+        # Predetermined weights-only snapshots (e.g. late batches) so checkpoints can later be compared by
+        # decoded WER instead of only the PER-best. Each must fall on a validation step.
+        checkpoint_batches = set(self.args.get('checkpoint_batches', None) or [])
+        last_batch = self.args['num_training_batches'] - 1
+        off_grid = sorted(b for b in checkpoint_batches if b % self.args['batches_per_val_step'] != 0 and b != last_batch)
+        if off_grid:
+            raise ValueError(f"checkpoint_batches must be validation steps (multiples of batches_per_val_step or the last batch): {off_grid}")
+
+        # CTC needs input frames >= target length + adjacent repeats; zero_infinity (C5) silently zeroes the
+        # loss of infeasible trials, so count them instead of letting them pass unnoticed.
+        n_infeasible = torch.zeros((), dtype = torch.long, device = self.device)
+        n_trials_seen = 0
+
         train_start_time = time.time()
 
         # train for specified number of batches
@@ -541,8 +574,23 @@ class BrainToTextDecoder_Trainer:
 
                 adjusted_lens = ((n_time_steps - self.args['model']['patch_size']) / self.args['model']['patch_stride'] + 1).to(torch.int32)
 
+                valid = torch.arange(labels.shape[1], device = self.device).unsqueeze(0) < phone_seq_lens.unsqueeze(1)
+                repeats = ((labels[:, 1:] == labels[:, :-1]) & valid[:, 1:]).sum(dim = 1)
+                n_infeasible += (adjusted_lens < phone_seq_lens + repeats).sum()
+                n_trials_seen += labels.shape[0]
+
                 # Get phoneme predictions 
-                logits = self.model(features, day_indicies)
+                if self.transform_args.get('time_mask_n', 0) > 0 and self.transform_args.get('time_mask_mode') == 'per_trial_frames':
+                    n_frames = (features.shape[1] - self.args['model']['patch_size']) // self.args['model']['patch_stride'] + 1
+                    frame_mask, coverage = per_trial_time_spans(
+                        adjusted_lens, n_frames,
+                        n_masks  = self.transform_args['time_mask_n'],
+                        max_frac = self.transform_args.get('time_mask_max_frac', 0.075),
+                        )
+                    self.mask_coverage.append(coverage.detach())
+                    logits = self.model(features, day_indicies, frame_mask = frame_mask)
+                else:
+                    logits = self.model(features, day_indicies)
 
                 # Calculate CTC Loss
                 loss = self.ctc_loss(
@@ -577,6 +625,11 @@ class BrainToTextDecoder_Trainer:
                         f'loss: {(loss.detach().item()):.2f} ' +
                         f'grad norm: {grad_norm:.2f} '
                         f'time: {train_step_duration:.3f}')
+                if self.mask_coverage:
+                    coverage = torch.cat(self.mask_coverage).float().cpu()
+                    self.logger.info(f'Time-mask coverage of valid time steps ({coverage.numel()} trials): mean {coverage.mean():.3f} '
+                                     f'p5 {coverage.quantile(0.05):.3f} p95 {coverage.quantile(0.95):.3f}')
+                    self.mask_coverage = []
 
             # Incrementally run a test step
             if i % self.args['batches_per_val_step'] == 0 or i == ((self.args['num_training_batches'] - 1)):
@@ -593,6 +646,7 @@ class BrainToTextDecoder_Trainer:
                         f'PER (avg): {val_metrics["avg_PER"]:.4f} ' +
                         f'CTC Loss (avg): {val_metrics["avg_loss"]:.4f} ' +
                         f'time: {val_step_duration:.3f}')
+                self.logger.info(f'CTC-infeasible training targets so far: {int(n_infeasible.item())} / {n_trials_seen}')
                 
                 if self.args['log_individual_day_val_PER']:
                     for day in val_metrics['day_PERs'].keys():
@@ -631,6 +685,10 @@ class BrainToTextDecoder_Trainer:
                     
                 else:
                     val_steps_since_improvement +=1
+
+                if i in checkpoint_batches:
+                    self.save_model_checkpoint(f'{self.args["checkpoint_dir"]}/checkpoint_batch_{i}',
+                                               val_metrics['avg_PER'], val_metrics['avg_loss'], include_optimizer = False)
 
                 # Optionally save this validation checkpoint, regardless of performance
                 if self.args['save_all_val_steps']:

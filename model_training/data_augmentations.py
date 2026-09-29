@@ -90,6 +90,36 @@ def time_mask(features, n_masks=20, max_frac=0.075):
     return features * keep.unsqueeze(-1).to(features.dtype)
 
 
+def time_mask_per_trial(features, lengths, n_masks=20, max_frac=0.075):
+    """Time masking as specified by Feghhi et al. 2025 (arXiv 2507.02800, the GRU variant with zero fill).
+
+    Each of n_masks spans has width U{0..floor(max_frac*L)} for that trial's own valid length L and a
+    start U{0..L-width}, so padding is never masked and short trials get proportionally short spans.
+    Spans may overlap; 20 spans of up to 7.5% cover about 53% of a trial on average (the paper's regime,
+    unlike time_mask above, which shares a 7.5% budget across all spans and draws on the padded length).
+    Returns the masked features and the realized masked fraction of valid bins per trial.
+    """
+    masked, coverage = per_trial_time_spans(lengths.to(features.device), features.shape[1], n_masks, max_frac)
+    return features * (~masked).unsqueeze(-1).to(features.dtype), coverage
+
+
+def per_trial_time_spans(lengths, T, n_masks=20, max_frac=0.075):
+    """The span draw of time_mask_per_trial: a [B, T] bool mask (True = masked) and per-trial coverage.
+
+    Also used on output frames for the Transformer variant, which replaces masked frame embeddings
+    with a learned token instead of zeroing input bins.
+    """
+    B = lengths.shape[0]
+    lengths = lengths.long().clamp(min=1, max=T)
+    max_w = torch.floor(max_frac * lengths.float()).long()
+    w = (torch.rand((B, n_masks), device=lengths.device) * (max_w + 1).unsqueeze(1).float()).long()
+    start = (torch.rand((B, n_masks), device=lengths.device) * (lengths.unsqueeze(1) - w + 1).float()).long()
+
+    idx = torch.arange(T, device=lengths.device).view(1, 1, T)
+    masked = ((idx >= start.unsqueeze(-1)) & (idx < (start + w).unsqueeze(-1))).any(dim=1)   # [B, T]
+    return masked, masked.sum(dim=1).float() / lengths.float()
+
+
 def channel_mask(features, rate=0.10):
     """C18 — electrode/channel masking. features: [B, T, C].
 

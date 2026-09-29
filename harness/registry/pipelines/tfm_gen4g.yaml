@@ -1,0 +1,7 @@
+name: tfm_gen4g
+description: "Causal Transformer (tfm_d512l8_adamw) with its own swept decode settings (best of 7 on val-dev)."
+acoustic: tfm_d512l8_adamw
+lm: gen4g
+decode: {acoustic_scale: 0.2, blank_penalty: 90}
+decode_tuned_on: {partition: val-dev, acoustic: tfm_d512l8_adamw, artifact: results/harness/sweeps/20260928T222844Z_tfm_d512l8_adamw+gen4g.json}
+preprocess_override: null

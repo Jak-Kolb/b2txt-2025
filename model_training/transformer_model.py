@@ -73,6 +73,7 @@ class TransformerDecoder(nn.Module):
                  patch_size=0,
                  patch_stride=0,
                  window=64,
+                 mask_token=False,
                  ):
         super().__init__()
         self.neural_dim = neural_dim
@@ -110,6 +111,12 @@ class TransformerDecoder(nn.Module):
             elif name.endswith('bias'):
                 nn.init.zeros_(param)
 
+        # Training-time time masking (Feghhi et al. 2025, Transformer variant): masked frames get a learned
+        # embedding. Zero-filled inputs would leave exactly constant rows, whose LayerNorm backward scales
+        # gradients by 1/sqrt(eps) per norm and overflows through the stack. Unused at inference.
+        if mask_token:
+            self.mask_token = nn.Parameter(torch.randn(d_model) * 0.02)
+
     def front_end(self, x, day_idx):
         '''Day-specific layer, dropout, and patching; same computation as GRUDecoder.forward.'''
         day_weights = torch.stack([self.day_weights[i] for i in day_idx], dim=0)
@@ -133,10 +140,16 @@ class TransformerDecoder(nn.Module):
         return torch.where(allowed, -self.slopes[:, None, None] * distance,
                            torch.full_like(distance, float('-inf'))).unsqueeze(0)
 
-    def forward(self, x, day_idx, states=None, return_state=False):
+    def forward(self, x, day_idx, states=None, return_state=False, frame_mask=None):
+        '''frame_mask: optional [B, frames] bool; True frames are replaced by the learned mask token.'''
         if states is not None or return_state:
             raise NotImplementedError("TransformerDecoder streams through stream_step()")
-        h = self.input_drop(self.input_proj(self.front_end(x, day_idx)))
+        h = self.input_proj(self.front_end(x, day_idx))
+        if frame_mask is not None:
+            if not hasattr(self, 'mask_token'):
+                raise ValueError("frame_mask needs a model built with mask_token=True")
+            h = torch.where(frame_mask.unsqueeze(-1), self.mask_token.to(h.dtype), h)
+        h = self.input_drop(h)
         bias = self.attention_bias(h.shape[1], h.device)
         for layer in self.layers:
             h = layer(h, bias)

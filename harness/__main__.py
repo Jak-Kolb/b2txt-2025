@@ -89,6 +89,7 @@ def cmd_compare(options):
 def cmd_train(options):
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     from . import train
+    not_before = train.parse_start(options.start_at) if options.start_at else None
     train_dir = train.fork(options.base, options.name, options.set or [], options.question, root=options.root,
                            smoke_batches=options.smoke_batches, additions=options.add or [])
     print(f"Forked {options.base} -> {options.name}: {train_dir}")
@@ -100,8 +101,9 @@ def cmd_train(options):
     if options.smoke_only:
         print("Smoke passed (--smoke-only: not launching the full run)")
         return
-    pid = train.launch(train_dir, then_bench=options.then_bench, root=options.root)
-    print(f"Launched detached supervisor pid {pid}; follow with: python -m harness train-status")
+    pid = train.launch(train_dir, then_bench=options.then_bench, root=options.root, not_before=not_before)
+    when = f"; training starts at {not_before} UTC" if not_before else ""
+    print(f"Launched detached supervisor pid {pid}{when}; follow with: python -m harness train-status")
 
 
 def cmd_train_status(options):
@@ -109,7 +111,8 @@ def cmd_train_status(options):
     for row in train.status(options.root):
         log = row["log"] or {}
         print(f"{row['id']}  {row['state']:<17} {row['name']} (from {row['forked_from']}; {' '.join(row['overrides'])})"
-              f"  val PER {log.get('last_val_per')}  bench {row['benchmark_run'] or '-'}")
+              f"  val PER {log.get('last_val_per')}  bench {row['benchmark_run'] or '-'}"
+              + (f"  starts {row['not_before']}" if row["state"] == "scheduled" else ""))
 
 
 def cmd_train_supervise(options):
@@ -225,6 +228,8 @@ def parser():
     train.add_argument("--smoke-batches", type=int, default=50)
     train.add_argument("--smoke-only", action="store_true")
     train.add_argument("--then-bench", metavar="PRESET", help="Benchmark preset to run with the new model")
+    train.add_argument("--start-at", metavar="ISO_TIME",
+                       help="Smoke now, start the full run at this time (with UTC offset, e.g. 2026-09-29T03:00-04:00)")
     train.set_defaults(func=cmd_train)
 
     status = sub.add_parser("train-status", help="Harness-launched training runs")

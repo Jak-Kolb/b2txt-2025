@@ -92,6 +92,41 @@ class TransformerTests(unittest.TestCase):
         with self.assertRaises(NotImplementedError):
             model(torch.randn(1, 10, 4), torch.tensor([0]), return_state=True)
 
+    def test_mask_token_replaces_masked_frames(self):
+        cfg = args(window=64)
+        cfg["model"]["transformer"]["mask_token"] = True
+        model = build_model(cfg).eval()
+        x, day = torch.randn(1, 30, 4), torch.tensor([0])
+        full = torch.ones(1, 14, dtype=torch.bool)                 # (30 - 3) // 2 + 1 = 14 frames
+        a = model(x, day, frame_mask=full)
+        b = model(torch.randn(1, 30, 4), day, frame_mask=full)
+        self.assertTrue(torch.allclose(a, b))                       # fully masked: the input no longer matters
+        none = torch.zeros(1, 14, dtype=torch.bool)
+        self.assertTrue(torch.allclose(model(x, day, frame_mask=none), model(x, day)))
+        with self.assertRaises(ValueError):
+            self.model()[0](x, day, frame_mask=full)                # model without a token
+        self.assertNotIn("mask_token", self.model()[0].state_dict())  # existing checkpoints still load
+
+    def test_masked_leading_frames_keep_gradients_bounded(self):
+        # Zero-filled input bins at a trial start leave exactly constant rows through the whole stack at
+        # init; LayerNorm's backward then scales gradients by 1/sqrt(eps) per norm. The token avoids that.
+        cfg = args(window=64)
+        cfg["model"]["transformer"].update(n_layers=4, mask_token=True)
+        model = build_model(cfg).train()
+        x = torch.randn(2, 60, 4)
+        mask = torch.zeros(2, 29, dtype=torch.bool)
+        mask[:, :10] = True
+        model(x, torch.tensor([0, 1]), frame_mask=mask).log_softmax(-1).mean().backward()
+        norm = torch.sqrt(sum((p.grad.double() ** 2).sum() for p in model.parameters() if p.grad is not None))
+        self.assertLess(norm.item(), 1e3)
+        zeroed = build_model(dict(cfg, model=dict(cfg["model"], transformer=dict(cfg["model"]["transformer"],
+                                                                                  mask_token=False)))).train()
+        x0 = x.clone()
+        x0[:, :25] = 0.0                                            # frames 0-9 see only zeroed bins
+        zeroed(x0, torch.tensor([0, 1])).log_softmax(-1).mean().backward()
+        norm0 = torch.sqrt(sum((p.grad.double() ** 2).sum() for p in zeroed.parameters() if p.grad is not None))
+        self.assertGreater(norm0.item(), 1e6)                       # documents the failure the token avoids
+
 
 if __name__ == "__main__":
     unittest.main()

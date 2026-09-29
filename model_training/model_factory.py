@@ -20,5 +20,6 @@ def build_model(args):
         from transformer_model import TransformerDecoder
         t = model_args['transformer']
         return TransformerDecoder(d_model=t['d_model'], n_layers=t['n_layers'], n_heads=t['n_heads'],
-                                  ffn_mult=t['ffn_mult'], dropout=t['dropout'], window=t['window'], **common)
+                                  ffn_mult=t['ffn_mult'], dropout=t['dropout'], window=t['window'],
+                                  mask_token=t.get('mask_token', False), **common)
     raise ValueError(f"Unknown model.type: {model_type}")

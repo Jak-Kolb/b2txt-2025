@@ -75,6 +75,16 @@ class TrainTests(unittest.TestCase):
             train.fork("tiny", "tfm3", ["model.type=transformer"], "q", root=self.results,
                        registry_root=self.registry, models_dir=self.models, data_dir=self.data)
 
+    def test_smoke_exercises_scheduled_snapshots(self):
+        train_dir = train.fork("tiny", "snap", [], "Snapshots?", root=self.results, registry_root=self.registry,
+                               models_dir=self.models, data_dir=self.data, smoke_batches=20,
+                               additions=["checkpoint_batches=[80000,119999]"])
+        self.assertEqual(list(OmegaConf.load(train_dir / "config.yaml").checkpoint_batches), [80000, 119999])
+        self.assertEqual(list(OmegaConf.load(train_dir / "smoke_config.yaml").checkpoint_batches), [19])
+        passed, result = train.run_smoke(train_dir, data_dir=self.data, trainer=self.fake(), device="cpu")
+        self.assertTrue(passed, result)
+        self.assertEqual(result["snapshots"], ["checkpoint_batch_19"])
+
     def test_log_parser_flags_nonfinite_values(self):
         path = Path(self.temp.name) / "training_log"
         path.write_text("Train batch 0: loss: nan grad norm: 1\nVal batch 0: PER (avg): 0.9 CTC\n")
@@ -82,6 +92,45 @@ class TrainTests(unittest.TestCase):
         path.write_text("Train batch 0: loss: 3.1 grad\nVal batch 0: PER (avg): 0.9 CTC\n")
         self.assertTrue(train.parse_log(path)["finite"])
         self.assertFalse(train.parse_log(path.with_name("missing"))["finite"])
+
+    def test_log_parser_reads_mask_coverage_and_infeasible_targets(self):
+        path = Path(self.temp.name) / "training_log"
+        path.write_text("Train batch 0: loss: 3.1 grad\n"
+                        "Time-mask coverage of valid time steps (64 trials): mean 0.520 p5 0.4 p95 0.6\n"
+                        "Time-mask coverage of valid time steps (64 trials): mean 0.540 p5 0.4 p95 0.6\n"
+                        "Val batch 0: PER (avg): 0.9 CTC\n"
+                        "CTC-infeasible training targets so far: 0 / 64\n"
+                        "CTC-infeasible training targets so far: 2 / 128\n")
+        log = train.parse_log(path)
+        self.assertEqual(log["infeasible_targets"], [2, 128])
+        self.assertAlmostEqual(log["mean_time_mask_coverage"], 0.53)
+        path.write_text("Train batch 0: loss: 3.1 grad\nVal batch 0: PER (avg): 0.9 CTC\n")
+        self.assertIsNone(train.parse_log(path)["infeasible_targets"])
+
+    def test_start_time_needs_an_offset_and_the_future(self):
+        from datetime import datetime, timedelta, timezone
+        future = datetime.now(timezone.utc) + timedelta(hours=1)
+        self.assertEqual(train.parse_start(future.astimezone(timezone(timedelta(hours=-4))).isoformat()),
+                         future.isoformat())
+        with self.assertRaisesRegex(ValueError, "UTC offset"):
+            train.parse_start(future.replace(tzinfo=None).isoformat())
+        with self.assertRaisesRegex(ValueError, "past"):
+            train.parse_start((future - timedelta(hours=2)).isoformat())
+        slept = []
+        train.wait_until((datetime.now(timezone.utc) + timedelta(seconds=0.2)).isoformat(),
+                         sleep=lambda s: (slept.append(s), __import__("time").sleep(min(s, 0.05))))
+        self.assertTrue(slept and all(s <= 60.0 for s in slept))
+
+    def test_scheduled_supervisor_waits_then_trains(self):
+        from datetime import datetime, timedelta, timezone
+        train_dir = self.fork()
+        start = (datetime.now(timezone.utc) + timedelta(seconds=0.3)).isoformat()
+        train.set_state(train_dir, not_before=start)
+        code = train.supervise(train_dir, root=self.results, trainer=self.fake(), registry_root=self.registry)
+        self.assertEqual(code, 0)
+        state = json.loads((train_dir / "state.json").read_text())
+        self.assertEqual(state["state"], "registered")
+        self.assertGreaterEqual(datetime.fromisoformat(state["updated"]), datetime.fromisoformat(start))
 
     def test_smoke_checks(self):
         train_dir = self.fork()

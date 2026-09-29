@@ -16,6 +16,8 @@ checkpoint = Path(config.checkpoint_dir)
 checkpoint.mkdir(parents=True, exist_ok=False)
 torch.manual_seed(0)
 torch.save({"model_state_dict": build_model(config).state_dict()}, checkpoint / "best_checkpoint")
+for batch in config.get("checkpoint_batches", None) or []:
+    torch.save({"model_state_dict": build_model(config).state_dict()}, checkpoint / f"checkpoint_batch_{batch}")
 OmegaConf.save(config, checkpoint / "args.yaml")
 loss = sys.argv[3] if len(sys.argv) > 3 else "2.50"
 (output / "training_log").write_text(

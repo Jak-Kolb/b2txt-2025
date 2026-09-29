@@ -130,6 +130,10 @@ beyond the recorded best path, and a defensible delay reference.
 **Causal Transformer — first full run 2026-09-28** (`harness train`; model.type=transformer). One 8 x 512
 configuration trained on la0's schedule is worse than the GRU in PER and WER, including after decode tuning
 and rescoring (results/RESULTS.md section 6). Further architecture work needs a specific question first.
+Next (2026-09-29, at most one overnight run per day): the published time-masking treatment, first on the
+Transformer (learned mask token; scheduled), then the GRU (zeroed bins), each against its unmasked run with the
+same seed. Late weights-only snapshots are saved for decoded-WER checkpoint selection; its selection data is
+still to be decided.
 
 **Next development milestone:** design a bounded, session-spanning development
 baseline and an online word-commitment comparison. Define commitment/revision

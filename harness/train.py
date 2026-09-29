@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 
 from . import REPO, registry
 from .scopes import DATA_DIR
@@ -26,6 +27,8 @@ TRAINED_MODELS = MODEL_TRAINING / "trained_models"
 NAME = re.compile(r"^[A-Za-z0-9_-]{1,60}$")
 TRAIN_LINE = re.compile(r"Train batch (\d+): loss: (\S+)")
 VAL_LINE = re.compile(r"Val batch (\d+): PER \(avg\): (\S+)")
+INFEASIBLE_LINE = re.compile(r"CTC-infeasible training targets so far: (\d+) / (\d+)")
+COVERAGE_LINE = re.compile(r"Time-mask coverage of valid time steps \((\d+) trials\): mean (\S+)")
 SELECTION = dict(rule="rnn_trainer best greedy-CTC val PER (ties: val loss) over all enabled val sessions",
                  data=["val-dev", "former-val-test"])
 
@@ -86,6 +89,8 @@ def fork(base, name, overrides, question, root=DEFAULT_ROOT, registry_root=regis
         batches_per_train_log=max(1, int(smoke_batches) // 5),
         output_dir=str((train_dir / "smoke_model").resolve()),
         checkpoint_dir=str((train_dir / "smoke_model" / "checkpoint").resolve()))))
+    if OmegaConf.select(config, "checkpoint_batches"):
+        smoke.checkpoint_batches = [int(smoke_batches) - 1]   # exercise the snapshot path at the smoke's last step
     with (train_dir / "config.yaml").open("x") as handle:
         handle.write(OmegaConf.to_yaml(config))
     with (train_dir / "smoke_config.yaml").open("x") as handle:
@@ -103,13 +108,17 @@ def parse_log(path):
     text = Path(path).read_text() if Path(path).exists() else ""
     losses = [float(v) for _, v in TRAIN_LINE.findall(text)]
     pers = [float(v) for _, v in VAL_LINE.findall(text)]
+    infeasible = INFEASIBLE_LINE.findall(text)
+    coverage = [float(v) for _, v in COVERAGE_LINE.findall(text)]
     json_safe = lambda v: v if math.isfinite(v) else str(v)  # state files are strict JSON
     return dict(n_train_lines=len(losses), n_val_lines=len(pers),
                 finite=bool(losses) and bool(pers) and all(math.isfinite(v) for v in losses + pers),
                 n_nonfinite=sum(not math.isfinite(v) for v in losses + pers),
                 last_loss=json_safe(losses[-1]) if losses else None,
                 last_val_per=json_safe(pers[-1]) if pers else None,
-                best_line="Best avg val PER achieved" in text)
+                best_line="Best avg val PER achieved" in text,
+                infeasible_targets=[int(v) for v in infeasible[-1]] if infeasible else None,
+                mean_time_mask_coverage=sum(coverage) / len(coverage) if coverage else None)
 
 
 def streaming_check(checkpoint_dir, data_dir, n_trials=2, device="cuda"):
@@ -145,8 +154,12 @@ def run_smoke(train_dir, data_dir=DATA_DIR, trainer=trainer_command, device="cud
         done = subprocess.run(trainer((train_dir / "smoke_config.yaml").resolve()), cwd=MODEL_TRAINING,
                               stdout=log, stderr=subprocess.STDOUT, env=env, timeout=timeout_s)
     checkpoint = train_dir / "smoke_model" / "checkpoint"
+    from omegaconf import OmegaConf
+    snapshots = [f"checkpoint_batch_{b}" for b in
+                 OmegaConf.load(train_dir / "smoke_config.yaml").get("checkpoint_batches", None) or []]
     result = dict(exit_code=done.returncode, log=parse_log(train_dir / "smoke_model" / "training_log"),
-                  checkpoint=(checkpoint / "best_checkpoint").exists() and (checkpoint / "args.yaml").exists())
+                  checkpoint=(checkpoint / "best_checkpoint").exists() and (checkpoint / "args.yaml").exists()
+                  and all((checkpoint / name).exists() for name in snapshots), snapshots=snapshots)
     passed = done.returncode == 0 and result["log"]["finite"] and result["checkpoint"]
     if passed:
         result["streaming"] = streaming_check(checkpoint, data_dir, device=device)
@@ -155,10 +168,30 @@ def run_smoke(train_dir, data_dir=DATA_DIR, trainer=trainer_command, device="cud
     return passed, result
 
 
-def launch(train_dir, then_bench=None, root=DEFAULT_ROOT):
-    """Start the detached supervisor; it survives this CLI and the SSH session."""
+def parse_start(value):
+    """An ISO 8601 start time with an explicit UTC offset (this machine's clock is UTC)."""
+    start = datetime.fromisoformat(value)
+    if start.tzinfo is None:
+        raise ValueError("--start-at needs a UTC offset, e.g. 2026-09-29T03:00-04:00")
+    if start <= datetime.now(timezone.utc):
+        raise ValueError(f"--start-at {value} is in the past")
+    return start.astimezone(timezone.utc).isoformat()
+
+
+def wait_until(not_before, sleep=time.sleep):
+    """Wall-clock wait in short steps, so a suspended machine starts late rather than never."""
+    target = datetime.fromisoformat(not_before)
+    while (remaining := (target - datetime.now(timezone.utc)).total_seconds()) > 0:
+        sleep(min(remaining, 60.0))
+
+
+def launch(train_dir, then_bench=None, root=DEFAULT_ROOT, not_before=None):
+    """Start the detached supervisor; it survives this CLI and the SSH session.
+
+    With not_before (UTC ISO), the supervisor waits in state 'scheduled' before starting the trainer.
+    """
     train_dir = Path(train_dir).resolve()
-    set_state(train_dir, then_bench=then_bench)
+    set_state(train_dir, then_bench=then_bench, not_before=not_before)
     with (train_dir / "supervise.log").open("x") as log:
         process = subprocess.Popen([sys.executable, "-u", "-m", "harness", "--root", str(root), "train-supervise",
                                     str(train_dir)], cwd=REPO, stdout=log, stderr=subprocess.STDOUT,
@@ -194,6 +227,10 @@ def supervise(train_dir, root=DEFAULT_ROOT, trainer=trainer_command, registry_ro
               bench_kwargs=None):
     train_dir = Path(train_dir)
     request = json.loads((train_dir / "request.json").read_text())
+    not_before = json.loads((train_dir / "state.json").read_text()).get("not_before")
+    if not_before:
+        set_state(train_dir, state="scheduled", supervisor_pid=os.getpid())
+        wait_until(not_before)
     env = dict(os.environ, PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True")
     with (train_dir / "train.log").open("x") as log:
         process = subprocess.Popen(trainer((train_dir / "config.yaml").resolve()), cwd=MODEL_TRAINING,
@@ -223,7 +260,8 @@ def status(root=DEFAULT_ROOT):
     for path in sorted((Path(root) / "train").glob("*/state.json"), reverse=True):
         state = json.loads(path.read_text())
         request = json.loads((path.parent / "request.json").read_text())
-        live_pid = state.get("trainer_pid") if state.get("state") == "training" else None
+        live_pid = (state.get("trainer_pid") if state.get("state") == "training" else
+                    state.get("supervisor_pid") if state.get("state") in ("launched", "scheduled") else None)
         if live_pid and not pid_alive(live_pid):
             state["state"] = "interrupted"
         log = parse_log(Path(request["model_dir"]) / "training_log") if state.get("state") in (
@@ -231,7 +269,8 @@ def status(root=DEFAULT_ROOT):
         rows.append(dict(id=path.parent.name, name=request["name"], forked_from=request["forked_from"],
                          overrides=request["overrides"], question=request["question"], state=state.get("state"),
                          updated=state.get("updated"), smoke=state.get("smoke"), log=log,
-                         benchmark_run=state.get("benchmark_run"), registry_entry=state.get("registry_entry")))
+                         benchmark_run=state.get("benchmark_run"), registry_entry=state.get("registry_entry"),
+                         not_before=state.get("not_before")))
     return rows
 
 

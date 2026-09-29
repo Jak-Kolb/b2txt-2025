@@ -93,6 +93,21 @@ key/value cache for streaming (`model_training/transformer_model.py`):
 A newly trained model inherits the preset's decode settings, which were tuned for another model;
 sweep them (`sweep --acoustic NAME --lm gen4g --grid ...`) before comparing.
 
+`--start-at 2026-09-29T03:00-04:00` (explicit UTC offset) runs the smoke immediately and holds the
+detached supervisor in state `scheduled` until then; kill its pid to cancel. `--add
+"checkpoint_batches=[80000,100000,119999]"` saves weights-only snapshots at those validation steps (for
+choosing a checkpoint by decoded WER rather than only the trainer's PER-best); the smoke saves one at
+its last batch and requires it.
+
+Time masking (`dataset.data_transforms`, with `time_mask_n` and `time_mask_max_frac`):
+`time_mask_mode: shared` (default; the original C17 augmentation, one 7.5% budget shared by all spans
+on the padded length), `per_trial` (Feghhi et al. 2025, GRU variant: each span up to max_frac of the
+trial's own length, input bins zeroed; about 53% coverage at 20 x 7.5%), or `per_trial_frames` (their
+Transformer variant: spans over output frames replaced by a learned token; needs
+`model.transformer.mask_token=true`). Zero-filled bins overflow a pre-LayerNorm Transformer's gradients
+at initialization, so use the token there. The training log records realized coverage and the count of
+CTC-infeasible targets, which `zero_infinity` would otherwise zero silently.
+
 ## Analyses of a run's saved outputs (no re-decoding of the acoustics)
 
 - **Error sources** (run page; cached under `cache/analysis/`): per reference word, the dataset's reference
