@@ -264,6 +264,8 @@ def parser():
     serve.add_argument("--port", type=int, default=8765)
     serve.add_argument("--data-dir")
     serve.add_argument("--lm-python", default="/home/fishinjak/.miniforge3/envs/b2txt25_lm/bin/python")
+    serve.add_argument("--live-idle-minutes", type=float, default=30.0,
+                       help="Unload the live pipeline after this many minutes unused (0 = never)")
     serve.set_defaults(func=cmd_serve)
     return top
 

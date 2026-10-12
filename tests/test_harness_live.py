@@ -179,7 +179,8 @@ class RelayTests(AioHTTPTestCase):
         command = [sys.executable, "-u", "-m", "harness.live_engine", "--root", str(self.results),
                    "--data-dir", str(self.data), "--lm-python", sys.executable, "--device", "cpu",
                    "--registry", str(self.registry)]
-        self.relay = LiveRelay(self.results, self.data, sys.executable, engine_command=command)
+        idle = 1 if self._testMethodName == "test_idle_engine_is_unloaded_and_restarts_on_load" else 0
+        self.relay = LiveRelay(self.results, self.data, sys.executable, engine_command=command, idle_unload_s=idle)
         return create_app(self.results, registry_root=self.registry, live=self.relay)
 
     async def receive_until(self, ws, predicate, timeout=60):
@@ -219,6 +220,20 @@ class RelayTests(AioHTTPTestCase):
         self.assertNotIn("reference", start)
         self.assertFalse(start["labeled"])
         self.assertNotIn("wer", end)
+        await ws.close()
+        await self.relay.shutdown()
+
+    async def test_idle_engine_is_unloaded_and_restarts_on_load(self):
+        ws = await self.client.ws_connect("/api/live")
+        await ws.send_str(json.dumps(dict(op="load", pipeline=dict(preset="tiny_fake"))))
+        await self.receive_until(ws, lambda e: e["type"] == "state" and e["state"] == "ready")
+        first = self.relay.process
+        stopped, _ = await self.receive_until(ws, lambda e: e["type"] == "state" and e["state"] == "stopped")
+        self.assertIn("without use", stopped["message"])
+        self.assertIsNotNone(first.returncode)                      # engine and its LM worker exited
+        await ws.send_str(json.dumps(dict(op="load", pipeline=dict(preset="tiny_fake"))))
+        await self.receive_until(ws, lambda e: e["type"] == "state" and e["state"] == "ready")
+        self.assertIsNot(self.relay.process, first)
         await ws.close()
         await self.relay.shutdown()
 

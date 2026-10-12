@@ -232,7 +232,8 @@ def create_app(root=DEFAULT_ROOT, registry_root=registry.REGISTRY_DIR, live=None
 
 def main(options):
     from .live import LiveRelay
-    live = LiveRelay(root=Path(options.root), data_dir=options.data_dir, lm_python=options.lm_python)
+    live = LiveRelay(root=Path(options.root), data_dir=options.data_dir, lm_python=options.lm_python,
+                     idle_unload_s=60.0 * options.live_idle_minutes)
     app = create_app(options.root, live=live, data_dir=options.data_dir or DATA_DIR)
     print(f"Harness viewer on http://127.0.0.1:{options.port}  (from the Mac: "
           f"ssh -L {options.port}:127.0.0.1:{options.port} jakpc)")

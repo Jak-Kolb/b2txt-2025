@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 import re
 import sys
+import time
 
 from aiohttp import WSMsgType, web
 
@@ -25,7 +26,9 @@ MAX_ITEMS = 500
 
 
 class LiveRelay:
-    def __init__(self, root, data_dir=None, lm_python=None, engine_command=None):
+    def __init__(self, root, data_dir=None, lm_python=None, engine_command=None, idle_unload_s=1800):
+        """idle_unload_s: stop the engine (freeing the model and its LM worker) after this long with no
+        playback and no browser command; the next load restarts it. 0 disables."""
         self.root = Path(root)
         self.data_dir = Path(data_dir) if data_dir else DATA_DIR
         self.lm_python = lm_python
@@ -38,12 +41,17 @@ class LiveRelay:
         self.finals = {}
         self.sessions = sorted(p.name for p in self.data_dir.iterdir() if p.is_dir()) if self.data_dir.exists() else []
         self.trial_cache = {}
+        self.idle_unload_s = idle_unload_s
+        self.last_activity = time.monotonic()
+        self.idle_task = None
+        self.exit_message = None
 
     def install(self, app):
         app.router.add_get("/api/live", self.websocket)
         app.router.add_get("/api/live/status", self.status)
         app.router.add_get("/api/data/sessions", self.list_sessions)
         app.router.add_get("/api/data/trials", self.list_trials)
+        app.on_startup.append(self.start_idle_watch)
         app.on_shutdown.append(self.shutdown)
 
     # -- engine process ---------------------------------------------------------------------
@@ -70,14 +78,41 @@ class LiveRelay:
                 event = json.loads(line)
             except ValueError:
                 continue
+            self.last_activity = time.monotonic()
             await self.augment(event)
             if event.get("type") == "state":
                 self.state = event
             await self.broadcast(event)
         await process.wait()
+        self.stderr.close()
         self.state = dict(type="state", state="stopped",
-                          message=f"Engine exited ({process.returncode}); see {self.stderr.name}")
+                          message=self.exit_message or f"Engine exited ({process.returncode}); see {self.stderr.name}")
+        self.exit_message = None
         await self.broadcast(self.state)
+
+    async def stop_engine(self, message=None):
+        """Close the engine's stdin; it unloads its model and LM worker and exits."""
+        if self.process is None or self.process.returncode is not None:
+            return
+        self.exit_message = message
+        self.process.stdin.close()
+        try:
+            await asyncio.wait_for(self.process.wait(), timeout=60)
+        except asyncio.TimeoutError:
+            self.process.terminate()
+            await self.process.wait()
+
+    async def start_idle_watch(self, _app=None):
+        if self.idle_unload_s > 0:
+            self.idle_task = asyncio.create_task(self.idle_watch())
+
+    async def idle_watch(self):
+        while True:
+            await asyncio.sleep(min(60.0, self.idle_unload_s))
+            idle = time.monotonic() - self.last_activity
+            if (self.process is not None and self.process.returncode is None
+                    and self.state.get("state") in ("idle", "ready") and idle >= self.idle_unload_s):
+                await self.stop_engine(f"Unloaded after {idle / 60:.0f} min without use; Load restarts it")
 
     async def augment(self, event):
         kind = event.get("type")
@@ -110,15 +145,11 @@ class LiveRelay:
                 self.sockets.discard(ws)
 
     async def shutdown(self, _app=None):
+        if self.idle_task is not None:
+            self.idle_task.cancel()
         for ws in list(self.sockets):
             await ws.close()
-        if self.process is not None and self.process.returncode is None:
-            self.process.stdin.close()
-            try:
-                await asyncio.wait_for(self.process.wait(), timeout=60)
-            except asyncio.TimeoutError:
-                self.process.terminate()
-                await self.process.wait()
+        await self.stop_engine()
 
     # -- validation -------------------------------------------------------------------------
     def validate(self, command):
@@ -167,6 +198,7 @@ class LiveRelay:
                 except (ValueError, TypeError, AttributeError) as exc:
                     await ws.send_str(json.dumps(dict(type="error", message=str(exc))))
                     continue
+                self.last_activity = time.monotonic()
                 if command["op"] == "stop" and (self.process is None or self.process.returncode is not None):
                     continue
                 await self.ensure_engine()

@@ -16,7 +16,9 @@ with the acoustic environment; outputs go to ignored `results/harness/`.
     .venv/bin/python -m harness rescore RUN                 # GPT-2 n-best rescoring at trial end
     .venv/bin/python -m harness commit RUN                  # word-commitment policies on recorded partials
 
-From the Mac: `ssh -L 8765:127.0.0.1:8765 jakpc`, then open http://127.0.0.1:8765.
+From the Mac: `ssh -L 8765:127.0.0.1:8765 jakpc`, then open http://127.0.0.1:8765. On JakPC the viewer is
+also published to the owner's tailnet only, via Windows Tailscale (`tailscale serve --bg http://127.0.0.1:8765`;
+undo with `tailscale serve reset`); the server itself still listens on 127.0.0.1 only.
 
 ## Pipelines
 
@@ -66,6 +68,20 @@ block-z-scored features; not spike times), spike-band power, per-array activity,
 electrode traces, the greedy phoneme stream, partial and final text beside the reference
 (hidden in blind mode; the engine never sees it), and frame processing lag. Speeds other than
 1x, or playback during a benchmark, are labeled display only.
+
+A loaded pipeline holds the model on the GPU and an LM worker (about 8.5 GB RAM for the 4-gram).
+After 30 minutes with no playback and no browser command, the server stops the engine, which frees
+both; the next Load starts it again (`serve --live-idle-minutes N`, 0 = never).
+
+On JakPC the viewer runs as a systemd user service (`~/.config/systemd/user/b2t-viewer.service`,
+lingering enabled). It starts whenever WSL starts and restarts after a crash. Control it with
+`b2t-viewer` (`~/.local/bin`):
+
+    b2t-viewer status | start | stop | restart   # stop lasts until the next start or WSL restart
+    b2t-viewer off | on                           # also disable / re-enable starting with WSL
+    b2t-viewer logs                               # follow results/harness/logs/serve.log
+
+After changing harness server code, run `b2t-viewer restart`.
 
 ## Retraining (`train`)
 
