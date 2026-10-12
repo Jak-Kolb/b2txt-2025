@@ -1,0 +1,30 @@
+name: anc_causal_tmask_s10
+checkpoint_dir: model_training/trained_models/anc_causal_tmask_s10_20261012T041558Z/checkpoint
+description: 'Fork of causal_la0: Overnight: causal la0 recipe plus the published
+  GRU time masking (20 spans per trial, each up to 7.5% of the trial, zeroed bins),
+  la0 seeds. Untested on the GRU since Sep 28. Complete 20k-batch schedule (num_training_batches
+  = lr_decay_steps = lr_decay_steps_day = 20000; la0 recipe otherwise). Evaluated
+  at the fixed final snapshot (batch 19999, chosen before training; no checkpoint
+  selection) on val-dev with gen4g at acoustic scales 0.25/0.3/0.4/0.5/0.6, blank
+  90, the same grid for every anchor.'
+training:
+  config: /home/fishinjak/code/nejm-brain-to-text/results/harness/train/20261012T041558Z_anc_causal_tmask_s10/config.yaml
+  log: /home/fishinjak/code/nejm-brain-to-text/model_training/trained_models/anc_causal_tmask_s10_20261012T041558Z/training_log
+  forked_from: causal_la0
+  overrides:
+  - dataset.data_transforms.time_mask_n=20
+  - dataset.data_transforms.time_mask_max_frac=0.075
+  - dataset.data_transforms.time_mask_mode=per_trial
+  - checkpoint_batches=[19999]
+  - num_training_batches=20000
+  - lr_decay_steps=20000
+  - lr_decay_steps_day=20000
+  git_head: 00aa85f54f7ad37128d4d8e615cd58cd002fdf0e
+  git_dirty: true
+  train_dir: /home/fishinjak/code/nejm-brain-to-text/results/harness/train/20261012T041558Z_anc_causal_tmask_s10
+selection:
+  rule: 'rnn_trainer best greedy-CTC val PER (ties: val loss) over all enabled val
+    sessions'
+  data:
+  - val-dev
+  - former-val-test

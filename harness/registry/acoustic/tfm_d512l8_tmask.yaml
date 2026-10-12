@@ -1,0 +1,25 @@
+name: tfm_d512l8_tmask
+checkpoint_dir: model_training/trained_models/tfm_d512l8_tmask_20260929T005116Z/checkpoint
+description: 'Fork of tfm_d512l8_adamw: Does the published time-masking treatment
+  (20 spans per trial, each up to 7.5% of the trial''s frames, replaced by a learned
+  mask token: the paper''s Transformer variant) close the causal Transformer''s gap
+  to causal_la0, at the same 120k-batch schedule, seed, and recipe as tfm_d512l8_adamw?'
+training:
+  config: /home/fishinjak/code/nejm-brain-to-text/results/harness/train/20260929T005116Z_tfm_d512l8_tmask/config.yaml
+  log: /home/fishinjak/code/nejm-brain-to-text/model_training/trained_models/tfm_d512l8_tmask_20260929T005116Z/training_log
+  forked_from: tfm_d512l8_adamw
+  overrides:
+  - dataset.data_transforms.time_mask_n=20
+  - dataset.data_transforms.time_mask_max_frac=0.075
+  - dataset.data_transforms.time_mask_mode=per_trial_frames
+  - model.transformer.mask_token=true
+  - checkpoint_batches=[80000,90000,100000,110000,119999]
+  git_head: 9bad2b6ae61e7ddc45b8ed1118050eb03598c842
+  git_dirty: true
+  train_dir: /home/fishinjak/code/nejm-brain-to-text/results/harness/train/20260929T005116Z_tfm_d512l8_tmask
+selection:
+  rule: 'rnn_trainer best greedy-CTC val PER (ties: val loss) over all enabled val
+    sessions'
+  data:
+  - val-dev
+  - former-val-test

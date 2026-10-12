@@ -1,0 +1,25 @@
+name: la0_seed11_30k
+checkpoint_dir: model_training/trained_models/la0_seed11_30k_20261008T125326Z/checkpoint
+description: 'Fork of causal_la0: Run B rerun (first attempt crashed at batch ~1600
+  with a cuDNN/CUDA fault): causal_la0 retrained with new model seed (11) and batch-order
+  seed (2), truncated at 30k batches of the same 120k-batch schedule. Its val PER
+  gap to causal_la0''s logged curve at 10k/20k/26-30k estimates seed-only variation,
+  for judging run A (bigru768_30k, which crashed at ~26.4k).'
+training:
+  config: /home/fishinjak/code/nejm-brain-to-text/results/harness/train/20261008T125326Z_la0_seed11_30k/config.yaml
+  log: /home/fishinjak/code/nejm-brain-to-text/model_training/trained_models/la0_seed11_30k_20261008T125326Z/training_log
+  forked_from: causal_la0
+  overrides:
+  - checkpoint_batches=[20000,29999]
+  - seed=11
+  - dataset.seed=2
+  - num_training_batches=30000
+  git_head: 00aa85f54f7ad37128d4d8e615cd58cd002fdf0e
+  git_dirty: true
+  train_dir: /home/fishinjak/code/nejm-brain-to-text/results/harness/train/20261008T125326Z_la0_seed11_30k
+selection:
+  rule: 'rnn_trainer best greedy-CTC val PER (ties: val loss) over all enabled val
+    sessions'
+  data:
+  - val-dev
+  - former-val-test

@@ -1,0 +1,11 @@
+name: la0_seed11_30k_b20k
+checkpoint_dir: model_training/trained_models/la0_seed11_30k_20261008T125326Z/snapshot_b20000
+description: "Weights-only snapshot at batch 20000 of run B, causal_la0 recipe with seeds 11/2; 30k-batch truncation of la0's 120k-batch schedule. For a paired WER check of A vs B at equal training."
+training:
+  config: results/harness/train/20261008T125326Z_la0_seed11_30k/config.yaml
+  log: model_training/trained_models/la0_seed11_30k_20261008T125326Z/training_log
+  forked_from: causal_la0
+  overrides: []
+selection:
+  rule: "fixed snapshot at batch 20000 (chosen before training; no checkpoint selection)"
+  data: [none]

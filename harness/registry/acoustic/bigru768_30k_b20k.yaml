@@ -1,0 +1,11 @@
+name: bigru768_30k_b20k
+checkpoint_dir: model_training/trained_models/bigru768_30k_20261007T225105Z/snapshot_b20000
+description: "Weights-only snapshot at batch 20000 of run A, bidirectional 5x768 GRU (la0 seeds); 30k-batch truncation of la0's 120k-batch schedule. For a paired WER check of A vs B at equal training."
+training:
+  config: results/harness/train/20261007T225105Z_bigru768_30k/config.yaml
+  log: model_training/trained_models/bigru768_30k_20261007T225105Z/training_log
+  forked_from: causal_la0
+  overrides: []
+selection:
+  rule: "fixed snapshot at batch 20000 (chosen before training; no checkpoint selection)"
+  data: [none]

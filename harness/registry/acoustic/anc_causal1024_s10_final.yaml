@@ -1,0 +1,11 @@
+name: anc_causal1024_s10_final
+checkpoint_dir: model_training/trained_models/anc_causal1024_s10_20261012T080626Z/snapshot_final
+description: "Fixed final snapshot (batch 19999) of anc_causal1024_s10. Complete 20k-batch schedule (num_training_batches = lr_decay_steps = lr_decay_steps_day = 20000; la0 recipe otherwise). Evaluated at the fixed final snapshot (batch 19999, chosen before training; no checkpoint selection) on val-dev with gen4g at acoustic scales 0.25/0.3/0.4/0.5/0.6, blank 90, the same grid for every anchor."
+training:
+  config: results/harness/train/20261012T080626Z_anc_causal1024_s10/config.yaml
+  log: model_training/trained_models/anc_causal1024_s10_20261012T080626Z/training_log
+  forked_from: causal_la0
+  overrides: []
+selection:
+  rule: "fixed final snapshot (batch 19999), chosen before training; no checkpoint selection"
+  data: [none]
