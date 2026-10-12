@@ -78,8 +78,12 @@ class TrainTests(unittest.TestCase):
     def test_smoke_exercises_scheduled_snapshots(self):
         train_dir = train.fork("tiny", "snap", [], "Snapshots?", root=self.results, registry_root=self.registry,
                                models_dir=self.models, data_dir=self.data, smoke_batches=20,
-                               additions=["checkpoint_batches=[80000,119999]"])
-        self.assertEqual(list(OmegaConf.load(train_dir / "config.yaml").checkpoint_batches), [80000, 119999])
+                               additions=["checkpoint_batches=[800,999]"])
+        self.assertEqual(list(OmegaConf.load(train_dir / "config.yaml").checkpoint_batches), [800, 999])
+        for bad in ("[799]", "[2000]"):   # off the validation grid; beyond the run
+            with self.assertRaisesRegex(ValueError, "checkpoint_batches"):
+                train.fork("tiny", "snap_bad", [], "q", root=self.results, registry_root=self.registry,
+                           models_dir=self.models, data_dir=self.data, additions=[f"checkpoint_batches={bad}"])
         self.assertEqual(list(OmegaConf.load(train_dir / "smoke_config.yaml").checkpoint_batches), [19])
         passed, result = train.run_smoke(train_dir, data_dir=self.data, trainer=self.fake(), device="cpu")
         self.assertTrue(passed, result)

@@ -74,6 +74,12 @@ def fork(base, name, overrides, question, root=DEFAULT_ROOT, registry_root=regis
         config = OmegaConf.merge(config, added)
     OmegaConf.set_struct(config, True)
     config = OmegaConf.merge(config, OmegaConf.from_dotlist(list(overrides)))  # unknown keys raise
+    # The smoke swaps in its own snapshot list, so check the real one here (the trainer's rule, plus range).
+    last_batch = int(config.num_training_batches) - 1
+    bad = [b for b in (OmegaConf.select(config, "checkpoint_batches") or [])
+           if b > last_batch or (b % int(config.batches_per_val_step) != 0 and b != last_batch)]
+    if bad:
+        raise ValueError(f"checkpoint_batches must be validation steps or the last batch ({last_batch}): {bad}")
     stamp = utc_stamp()
     model_dir = Path(models_dir).resolve() / f"{name}_{stamp}"
     train_dir = Path(root) / "train" / f"{stamp}_{safe_name(name)}"
@@ -133,6 +139,10 @@ def streaming_check(checkpoint_dir, data_dir, n_trials=2, device="cuda"):
     model, args, _ = load_model(checkpoint_dir, device)
     if args["dataset"]["data_transforms"].get("smooth_lookahead") is None:
         return dict(skipped="non-causal smoothing")
+    if args["model"].get("bidirectional", False):
+        return dict(skipped="bidirectional model")
+    if args["model"].get("lookahead_units", 0):
+        return dict(skipped="look-ahead model (no streaming implementation yet)")
     sessions = list(args["dataset"]["sessions"])
     errors = []
     for trial in build_scope("val-dev-sample", data_dir)["trials"][:n_trials]:

@@ -132,9 +132,13 @@ def resolve(pipeline=None, *, acoustic=None, lm=None, decode=None, preprocess=No
                 expected_rss_gb=float(lm_entry.get("expected_rss_gb", 2.0))),
         decode=resolved_decode, decode_tuned_on=tuned_on,
         preprocess=dict(trained=trained, effective=effective, override=override or None),
-        streaming_capable=streaming_capable(effective),
+        streaming_capable=streaming_capable(effective) and not saved["model"].get("bidirectional", False)
+        and not saved["model"].get("lookahead_units", 0),
         model=dict(n_input_features=int(model["n_input_features"]), n_classes=int(saved["dataset"]["n_classes"]),
                    patch_size=int(model["patch_size"]), patch_stride=int(model["patch_stride"]),
+                   lookahead_frames=(int(model.get("lookahead_frames", 0)) if model.get("lookahead_units", 0)
+                                     else int(model["window_future_frames"]) if model.get("window_future_frames") is not None
+                                     else None),
                    sessions=list(saved["dataset"]["sessions"])),
         finalization=None)
 
@@ -172,7 +176,10 @@ def flags(spec, partition, limited=False):
             out.append("decode_tuned_for_other_acoustic")
     if spec["preprocess"]["effective"] != spec["preprocess"]["trained"]:
         out.append("preprocess_mismatch")
-    if not spec["streaming_capable"]:
+    lookahead = spec["model"].get("lookahead_frames")
+    if lookahead is not None:   # bounded right context; replayed offline (no streaming implementation yet)
+        out.append(f"offline_lookahead_{lookahead * spec['model']['patch_stride'] * 20}ms")
+    elif not spec["streaming_capable"]:
         out.append("offline_noncausal")
     if partition == "former-val-test":
         out.append("exposed_partition")

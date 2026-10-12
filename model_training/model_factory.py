@@ -15,7 +15,11 @@ def build_model(args):
     model_type = model_args.get('type', 'gru')
     if model_type == 'gru':
         return GRUDecoder(n_units=model_args['n_units'], rnn_dropout=model_args['rnn_dropout'],
-                          n_layers=model_args['n_layers'], **common)
+                          n_layers=model_args['n_layers'], bidirectional=model_args.get('bidirectional', False),
+                          lookahead_frames=model_args.get('lookahead_frames', 0),
+                          lookahead_units=model_args.get('lookahead_units', 0),
+                          window_past_frames=model_args.get('window_past_frames'),
+                          window_future_frames=model_args.get('window_future_frames'), **common)
     if model_type == 'transformer':
         from transformer_model import TransformerDecoder
         t = model_args['transformer']

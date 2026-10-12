@@ -589,6 +589,8 @@ class BrainToTextDecoder_Trainer:
                         )
                     self.mask_coverage.append(coverage.detach())
                     logits = self.model(features, day_indicies, frame_mask = frame_mask)
+                elif getattr(self.model, 'uses_frame_lens', False):
+                    logits = self.model(features, day_indicies, frame_lens = adjusted_lens)
                 else:
                     logits = self.model(features, day_indicies)
 
@@ -781,7 +783,10 @@ class BrainToTextDecoder_Trainer:
 
                     adjusted_lens = ((n_time_steps - self.args['model']['patch_size']) / self.args['model']['patch_stride'] + 1).to(torch.int32)
 
-                    logits = self.model(features, day_indicies)
+                    if getattr(self.model, 'uses_frame_lens', False):
+                        logits = self.model(features, day_indicies, frame_lens = adjusted_lens)
+                    else:
+                        logits = self.model(features, day_indicies)
     
                     loss = self.ctc_loss(
                         torch.permute(logits.log_softmax(2), [1, 0, 2]),

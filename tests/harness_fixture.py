@@ -64,7 +64,7 @@ def model_args(lookahead=0):
                         "dataset_dir": "unused"}}
 
 
-def make_checkpoint(directory, lookahead=0, seed=3, transformer=False):
+def make_checkpoint(directory, lookahead=0, seed=3, transformer=False, bidirectional=False):
     import torch
     from omegaconf import OmegaConf
     from model_training.benchmark.common import build_model
@@ -73,6 +73,8 @@ def make_checkpoint(directory, lookahead=0, seed=3, transformer=False):
     if transformer:
         args["model"].update(type="transformer", transformer=dict(d_model=16, n_layers=2, n_heads=2,
                                                                   ffn_mult=2, dropout=0.0, window=4))
+    if bidirectional:
+        args["model"]["bidirectional"] = True
     directory = Path(directory)
     directory.mkdir(parents=True)
     torch.save({"model_state_dict": build_model(args).state_dict()}, directory / "best_checkpoint")

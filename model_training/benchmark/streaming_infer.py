@@ -128,6 +128,10 @@ class StreamingDecoder:
             # Non-recurrent models (e.g. TransformerDecoder) carry their own streaming state.
             self.hidden = self.model.initial_state()
         else:
+            if getattr(self.model, "bidirectional", False):
+                raise ValueError("A bidirectional GRU needs the whole trial and cannot stream")
+            if getattr(self.model, "lookahead_units", 0):
+                raise ValueError("Streaming is not implemented for the look-ahead module yet")
             self.hidden = self.model.h0.expand(
                 self.model.n_layers,
                 1,
