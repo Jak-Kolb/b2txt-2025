@@ -223,6 +223,26 @@ class RelayTests(AioHTTPTestCase):
         await ws.close()
         await self.relay.shutdown()
 
+    async def test_unload_during_playback_ends_the_engine(self):
+        ws = await self.client.ws_connect("/api/live")
+        await ws.send_str(json.dumps(dict(op="load", pipeline=dict(preset="tiny_fake"))))
+        await self.receive_until(ws, lambda e: e["type"] == "state" and e["state"] == "ready")
+        first = self.relay.process
+        await ws.send_str(json.dumps(dict(op="play", items=[dict(split="val", session="t15.2099.01.02",
+                                                                 trial_key="trial_0001")], speed=1)))
+        await self.receive_until(ws, lambda e: e["type"] == "state" and e["state"] == "playing")
+        await ws.send_str(json.dumps(dict(op="unload")))
+        stopped, events = await self.receive_until(ws, lambda e: e["type"] == "state" and e["state"] == "stopped")
+        self.assertEqual(stopped["message"], "Unloaded")
+        self.assertFalse([e for e in events if e["type"] == "error"])     # no "busy" refusal
+        self.assertIsNotNone(first.returncode)                            # engine, model and LM worker gone
+        await ws.send_str(json.dumps(dict(op="unload")))                 # unloading again is a no-op
+        await ws.send_str(json.dumps(dict(op="load", pipeline=dict(preset="tiny_fake"))))
+        await self.receive_until(ws, lambda e: e["type"] == "state" and e["state"] == "ready")
+        self.assertIsNot(self.relay.process, first)
+        await ws.close()
+        await self.relay.shutdown()
+
     async def test_idle_engine_is_unloaded_and_restarts_on_load(self):
         ws = await self.client.ws_connect("/api/live")
         await ws.send_str(json.dumps(dict(op="load", pipeline=dict(preset="tiny_fake"))))

@@ -3,6 +3,7 @@
 // z-scored release (binned per 20 ms; no spike times) and z-scored spike-band power.
 import { diffLine, el, fill, fmt, flagBadges, getJSON } from "../ui.js";
 import { hideTooltip, showTooltip, svg } from "../charts.js";
+import { WordSpeaker } from "../speech.js";
 
 const WINDOW = 200;            // bins visible (4 s)
 const GAP = 2;                 // separator rows between arrays
@@ -100,6 +101,32 @@ export async function liveView(main) {
     ["max", "max (display only)"]].map(([v, t]) => el("option", { value: v, text: t })));
   const blind = el("input", { type: "checkbox", onchange: (e) => { s.blind = e.target.checked; renderSentence(); } });
 
+  // ---- speech: committed words read aloud by the browser (plays on the machine showing this page) ----------------
+  const synth = window.speechSynthesis;
+  const speakToggle = el("input", { type: "checkbox", disabled: !synth, onchange: () => { if (!speakToggle.checked) synth.cancel(); renderSentence(); } });
+  const speakWhen = el("select", { title: "When a word is final enough to say: the clock-A commit rule (sil+D) from the live-word evaluations" },
+    [["1", "at its word end + 80 ms (sil+1)"], ["13", "at its word end + 1.04 s (sil+13)"], ["final", "whole sentence at trial end"]]
+      .map(([v, t]) => el("option", { value: v, text: t })));
+  const voiceSelect = el("select", {});
+  function loadVoices() {
+    const voices = synth ? synth.getVoices() : [];
+    const keep = voiceSelect.value;
+    voiceSelect.replaceChildren(el("option", { value: "", text: "default voice" }),
+      ...voices.map((v) => el("option", { value: v.name, text: `${v.name} (${v.lang})` })));
+    voiceSelect.value = keep || "";
+  }
+  if (synth) { loadVoices(); synth.addEventListener("voiceschanged", loadVoices); }
+  const say = (text) => {
+    if (!synth || !speakToggle.checked) return;
+    const u = new SpeechSynthesisUtterance(text);
+    const voice = synth.getVoices().find((v) => v.name === voiceSelect.value);
+    if (voice) u.voice = voice;
+    synth.speak(u);
+  };
+  const delayOf = () => (speakWhen.value === "final" ? "final" : Number(speakWhen.value));
+  s.speaker = new WordSpeaker(say, delayOf());
+  speakWhen.addEventListener("change", () => { s.speaker.delay = delayOf(); });
+
   async function loadSessions() {
     const sessions = await getJSON(`/api/data/sessions?split=${splitSelect.value}`);
     sessionSelect.replaceChildren(...sessions.map((x) => el("option", { value: x.session,
@@ -121,8 +148,12 @@ export async function liveView(main) {
   };
   const speed = () => (speedSelect.value === "max" ? "max" : Number(speedSelect.value));
   const item = (key) => ({ split: splitSelect.value, session: sessionSelect.value, trial_key: key });
-  const loadButton = el("button", { class: "primary", onclick: () => send({ op: "load", pipeline: pipelineRequest() }) }, "Load pipeline");
-  const unloadButton = el("button", { onclick: () => send({ op: "unload" }) }, "Unload");
+  // One button: Load when nothing is loaded, otherwise Unload (ends the engine: stops playback, frees GPU and LM memory)
+  const loaded = () => s.engine && ["loading", "ready", "playing"].includes(s.engine.state);
+  const loadButton = el("button", { class: "primary", onclick: () => {
+    if (loaded()) { if (synth) synth.cancel(); send({ op: "unload" }); }
+    else send({ op: "load", pipeline: pipelineRequest() });
+  } }, "Load pipeline");
   const playButton = el("button", { class: "primary", onclick: () => send({ op: "play", items: [item(trialSelect.value)], speed: speed() }) }, "Play trial");
   const sessionButton = el("button", { onclick: () => {
     const start = s.trials.findIndex((t) => t.trial_key === trialSelect.value);
@@ -135,7 +166,7 @@ export async function liveView(main) {
     trialSelect.value = s.trials[Math.floor(Math.random() * s.trials.length)].trial_key;
     send({ op: "play", items: [item(trialSelect.value)], speed: speed() });
   } }, "Random trial");
-  const stopButton = el("button", { onclick: () => send({ op: "stop" }) }, "Stop");
+  const stopButton = el("button", { onclick: () => { if (synth) synth.cancel(); send({ op: "stop" }); } }, "Stop playback");
 
   // ---- neural panels ----------------------------------------------------------------------
   const txCanvas = el("canvas", { width: WINDOW, height: ROWS, class: "neural" });
@@ -222,9 +253,12 @@ export async function liveView(main) {
     else if (showRef && !t.final) live = diffLine(t.reference, t.words.join(" "), { prefix: true });
     else if (showRef && t.final) live = diffLine(t.reference, t.words.join(" "));
     else live = el("div", { class: "words" }, t.words.map((w, i) => [el("span", { class: `w${t.prevWords[i] === w ? "" : " new"}`, text: w }), " "]));
-    fill(sentence, 
+    const spoken = speakToggle.checked ? [
+      el("div", { class: "sub", text: `Spoken aloud (${speakWhen.selectedOptions[0].text}; cannot be taken back)` }),
+      el("div", { class: "words", text: s.speaker.spoken.join(" ") || "…" })] : null;
+    fill(sentence,
       el("div", { class: "sub", text: "Sentence cue shown to the participant (copy task)" }), refLine,
-      el("div", { class: "sub", text: t.final ? "Final decoded text" : "Decoding (partial output)" }), live,
+      el("div", { class: "sub", text: t.final ? "Final decoded text" : "Decoding (partial output)" }), live, spoken,
       el("div", { class: "row sub" },
         el("span", { text: `revisions so far: ${t.revisions}` }),
         t.wer ? el("strong", { text: `trial WER ${fmt(t.wer.percent, 1)}% (${t.wer.edits}/${t.wer.ref_words})` }) : null,
@@ -365,9 +399,13 @@ export async function liveView(main) {
     if (event.type === "state") {
       s.engine = event;
       const p = event.pipeline;
-      status.textContent = `Engine ${event.state}${p ? ` · ${p.name} (${p.acoustic} + ${p.lm}, ac ${p.decode.acoustic_scale} / bp ${p.decode.blank_penalty})` : ""}`
-        + `${event.lm_expected_rss_gb ? ` · LM ~${event.lm_expected_rss_gb} GB RAM` : ""}${event.message ? ` · ${event.message}` : ""}`;
+      const label = { loading: "Loading…", ready: "Ready", playing: "Playing" }[event.state] || "Not loaded";
+      status.textContent = `${label}${p ? ` · ${p.name} (${p.acoustic} + ${p.lm}, ac ${p.decode.acoustic_scale} / bp ${p.decode.blank_penalty})` : ""}`
+        + `${p && event.lm_expected_rss_gb ? ` · LM ~${event.lm_expected_rss_gb} GB RAM` : ""}${event.message ? ` · ${event.message}` : ""}`;
       playButton.disabled = sessionButton.disabled = randomButton.disabled = event.state !== "ready";
+      stopButton.disabled = event.state !== "playing";
+      loadButton.textContent = loaded() ? "Unload" : "Load pipeline";
+      loadButton.disabled = event.state === "loading";
     } else if (event.type === "error") {
       errorBox.textContent = event.message;
     } else if (event.type === "trial_start") {
@@ -375,6 +413,7 @@ export async function liveView(main) {
         received: new Uint8Array(event.n_bins), lastBin: -1, words: [], prevWords: [], revisions: 0, phones: [], lastArg: null,
         lags: [], reference: event.reference, final: false, fallback: new Set(event.tx_fallback), speed: event.speed,
         timingValid: event.timing_valid, summary: null, wer: null, endpointToFinal: null, top: [] };
+      s.speaker.reset();          // speech still queued from the previous trial finishes (Stop cancels it)
       fill(trialHeader, el("strong", { text: `${event.item.session} · ${event.item.trial_key}` }),
         el("span", { class: "badge", text: event.partition }),
         el("span", { class: "badge", title: "Sentence source corpus of this recording block", text: `source: ${event.corpus || "unknown"}` }),
@@ -398,9 +437,11 @@ export async function liveView(main) {
       t.lastArg = event.phone;
       t.top = event.top;
       t.lags.push(event.lag_ms);
+      s.speaker.frame(event);
       renderSentence(); renderPhonemes(); renderLag();
     } else if (event.type === "final") {
       t.prevWords = t.words; t.words = event.words; t.final = true; t.endpointToFinal = event.endpoint_to_final_ms;
+      s.speaker.final(event.words);
       renderSentence();
     } else if (event.type === "trial_end") {
       t.summary = event.summary; t.wer = event.wer || null; t.droppedBins = event.dropped_bins;
@@ -420,10 +461,12 @@ export async function liveView(main) {
     el("h1", { text: "Live" }),
     el("div", { class: "sub", text: "Replays released features at their 20 ms cadence through the loaded pipeline (the same code path as paced benchmarks). "
       + "Every played trial is recorded under results/harness/live/. Trial ends are the dataset's (oracle) endpoints." }),
-    el("div", { class: "filters" }, el("label", {}, "Pipeline ", presetSelect), el("label", {}, custom, " custom"), loadButton, unloadButton, status),
+    el("div", { class: "filters" }, el("label", {}, "Pipeline ", presetSelect), el("label", {}, custom, " custom"), loadButton, status),
     customBox,
     el("div", { class: "filters" }, splitSelect, sessionSelect, trialSelect, speedSelect, playButton, sessionButton, randomButton, stopButton,
       el("label", {}, blind, " blind (hide reference)"), errorBox),
+    el("div", { class: "filters" }, el("label", { title: synth ? "" : "This browser has no speech synthesis" }, speakToggle, " speak words aloud "),
+      speakWhen, voiceSelect),
     trialHeader,
     el("div", { class: "live-grid" },
       el("div", { class: "live-neural" },
@@ -438,7 +481,7 @@ export async function liveView(main) {
     el("div", { class: "filters" }, electrodeSelect, el("button", { onclick: () => pin(Number(electrodeSelect.value)) }, "Pin electrode"),
       el("span", { class: "sub", text: `up to ${MAX_PINS} at once` })),
     pinsBox);
-  playButton.disabled = sessionButton.disabled = randomButton.disabled = true;
+  playButton.disabled = sessionButton.disabled = randomButton.disabled = stopButton.disabled = true;
   renderSentence(); renderPins();
   await loadSessions();
   connect();
@@ -447,5 +490,6 @@ export async function liveView(main) {
   scheme.addEventListener("change", onScheme);
   s.dirty = true;
   frame();
-  return () => { s.closed = true; if (s.ws) s.ws.close(); cancelAnimationFrame(raf); scheme.removeEventListener("change", onScheme); hideTooltip(); };
+  return () => { s.closed = true; if (s.ws) s.ws.close(); cancelAnimationFrame(raf); scheme.removeEventListener("change", onScheme); hideTooltip();
+    if (synth) { synth.cancel(); synth.removeEventListener("voiceschanged", loadVoices); } };
 }

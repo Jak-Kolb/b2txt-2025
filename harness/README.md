@@ -69,6 +69,13 @@ electrode traces, the greedy phoneme stream, partial and final text beside the r
 (hidden in blind mode; the engine never sees it), and frame processing lag. Speeds other than
 1x, or playback during a benchmark, are labeled display only.
 
+"Speak words aloud" reads the decoded words through the browser's speech synthesis, so the audio plays on
+the machine showing the page. A word is spoken once the clock-A commit rule finalizes it (`sil+1`: 80 ms
+after the model's own greedy word boundary; `sil+13`: 1.04 s; or the whole sentence at trial end), and the
+rest of the final text at the trial's end; spoken words are never retracted, so later revisions are live
+errors, as in `learning/live_eval/clock_a.py` (`harness/web/js/speech.js`; `tests/test_live_speech.py`
+checks it against clock_a). Speech-synthesis latency is not measured.
+
 A loaded pipeline holds the model on the GPU and an LM worker (about 8.5 GB RAM for the 4-gram).
 After 30 minutes with no playback and no browser command, the server stops the engine, which frees
 both; the next Load starts it again (`serve --live-idle-minutes N`, 0 = never).

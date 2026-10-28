@@ -199,7 +199,13 @@ class LiveRelay:
                     await ws.send_str(json.dumps(dict(type="error", message=str(exc))))
                     continue
                 self.last_activity = time.monotonic()
-                if command["op"] == "stop" and (self.process is None or self.process.returncode is not None):
+                if command["op"] in ("stop", "unload") and (self.process is None or self.process.returncode is not None):
+                    continue
+                if command["op"] == "unload":
+                    # End the engine (as the idle timeout does): stops any playback and frees the model, its LM worker
+                    # and all GPU memory; the next load starts a fresh engine. Unloading inside a running engine kept
+                    # its CUDA context and was refused during playback.
+                    await self.stop_engine("Unloaded")
                     continue
                 await self.ensure_engine()
                 self.process.stdin.write((json.dumps(command) + "\n").encode())
