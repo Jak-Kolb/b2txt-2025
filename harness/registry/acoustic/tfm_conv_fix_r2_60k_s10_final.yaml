@@ -1,0 +1,11 @@
+name: tfm_conv_fix_r2_60k_s10_final
+checkpoint_dir: model_training/trained_models/tfm_conv_fix_r2_60k_s10_20261027T000841Z/snapshot_final
+description: "Fixed final snapshot (batch 59999) of tfm_conv_fix_r2_60k_s10. 60k-batch schedule (num_training_batches = lr_decay_steps = lr_decay_steps_day = 60000), fixed final snapshot (batch 59999, chosen before training; no checkpoint selection); val-dev greedy PER and WER over acoustic scales 0.25-0.6 at gen4g."
+training:
+  config: results/harness/train/20261027T000841Z_tfm_conv_fix_r2_60k_s10/config.yaml
+  log: model_training/trained_models/tfm_conv_fix_r2_60k_s10_20261027T000841Z/training_log
+  forked_from: causal_la0
+  overrides: []
+selection:
+  rule: "fixed final snapshot (batch 59999), chosen before training; no checkpoint selection"
+  data: [none]
