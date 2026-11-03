@@ -141,8 +141,10 @@ def streaming_check(checkpoint_dir, data_dir, n_trials=2, device="cuda"):
         return dict(skipped="non-causal smoothing")
     if args["model"].get("bidirectional", False):
         return dict(skipped="bidirectional model")
-    if args["model"].get("lookahead_units", 0):
-        return dict(skipped="look-ahead model (no streaming implementation yet)")
+    if (args["model"].get("transformer") or {}).get("lookahead_frames", 0):
+        return dict(skipped="look-ahead Transformer (no streaming implementation yet)")
+    if (args["model"].get("transformer") or {}).get("no_day_input", False):
+        return dict(skipped="Transformer without a day input layer (no streaming implementation yet)")
     sessions = list(args["dataset"]["sessions"])
     errors = []
     for trial in build_scope("val-dev-sample", data_dir)["trials"][:n_trials]:

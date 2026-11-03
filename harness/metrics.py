@@ -142,8 +142,11 @@ def smoothing_kernel(std, size, lookahead):
     return kernel / kernel.sum(), past, future
 
 
-def structural_delay(preprocess, patch_size, patch_stride, bin_ms=20.0):
-    """Buffering delays implied by the configuration alone (exact for buffering only)."""
+def structural_delay(preprocess, patch_size, patch_stride, bin_ms=20.0, lookahead_frames=0):
+    """Buffering delays implied by the configuration alone (exact for buffering only).
+
+    lookahead_frames: the model's right context R; the output for frame t waits for frames t+1..t+R.
+    """
     window, stride = (patch_size, patch_stride) if patch_size > 0 else (1, 1)
     if preprocess["smooth_data"]:
         kernel, past, future = smoothing_kernel(preprocess["smooth_kernel_std"],
@@ -163,7 +166,8 @@ def structural_delay(preprocess, patch_size, patch_stride, bin_ms=20.0):
         smoothing=dict(past_bins=past, future_bins=future, support_bins=past + future + 1,
                        centroid_delay_ms=-centroid * bin_ms),
         patch=dict(window_bins=window, stride_bins=stride, window_ms=window * bin_ms),
-        first_output_ms=(window + future) * bin_ms,
+        model_lookahead_ms=lookahead_frames * stride * bin_ms,
+        first_output_ms=(window + future + lookahead_frames * stride) * bin_ms,
         update_cadence_ms=stride * bin_ms,
         frame_entry_wait_ms=dict(min=0.0, max=(stride - 1) * bin_ms, mean=(stride - 1) * bin_ms / 2))
 

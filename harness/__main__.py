@@ -90,8 +90,9 @@ def cmd_train(options):
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     from . import train
     not_before = train.parse_start(options.start_at) if options.start_at else None
+    extra = dict(data_dir=options.data_dir) if options.data_dir else {}
     train_dir = train.fork(options.base, options.name, options.set or [], options.question, root=options.root,
-                           smoke_batches=options.smoke_batches, additions=options.add or [])
+                           smoke_batches=options.smoke_batches, additions=options.add or [], **extra)
     print(f"Forked {options.base} -> {options.name}: {train_dir}")
     print(f"Smoke run ({options.smoke_batches} batches, 2 validations) ...", flush=True)
     passed, result = train.run_smoke(train_dir)
@@ -225,6 +226,8 @@ def parser():
     train.add_argument("--add", action="append", metavar="KEY=VALUE",
                        help="Introduce a new config key (e.g. model.type=transformer)")
     train.add_argument("--question", required=True, help="What this run is meant to answer")
+    train.add_argument("--data-dir", help="Training dataset_dir (default data/hdf5_data_final), e.g. "
+                       "data/hdf5_data_t15_t12; the smoke's streaming check still uses T15 val-dev")
     train.add_argument("--smoke-batches", type=int, default=50)
     train.add_argument("--smoke-only", action="store_true")
     train.add_argument("--then-bench", metavar="PRESET", help="Benchmark preset to run with the new model")

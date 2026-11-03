@@ -189,7 +189,8 @@ def analyze(rows, logits_npz, spec, data_dir):
     offsets = np.concatenate([[0], np.cumsum(lengths)])
     model = spec["model"]
     lookahead = spec["preprocess"]["effective"].get("smooth_lookahead") or 0
-    frame_ms = lambda f: (model["patch_size"] + f * model["patch_stride"] + lookahead) * 20.0
+    right = model.get("lookahead_frames") or 0   # frame f's output also waits for frames f+1..f+R
+    frame_ms = lambda f: (model["patch_size"] + (f + right) * model["patch_stride"] + lookahead) * 20.0
     lexicon = load_lexicon(spec["lm"]["graph_dir"])
     per_trial, handles = [], {}
     try:

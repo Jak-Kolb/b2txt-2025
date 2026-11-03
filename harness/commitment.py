@@ -23,7 +23,8 @@ from .store import write_new_json, utc_stamp
 
 VERSION = 1
 DEFINITIONS = dict(
-    clock="nominal input availability of each partial output, (window + frame*stride + lookahead) * 20 ms; "
+    clock="nominal input availability of each partial output, (window + (frame + R)*stride + lookahead) * 20 ms, "
+          "R = the model's look-ahead frames (0 for causal models); "
           "decoder compute excluded (paced median frame lag for la0 is about 9.5 ms)",
     output="committed words, then the final hypothesis from the next position on (position splice)",
     commit_errors="committed-before-endpoint words that differ from the final hypothesis at that position",
@@ -166,7 +167,8 @@ def evaluate_run(run_dir, policies=None, n_boot=10_000):
     manifest, rows, partials, finals = load_trials(run_dir)
     model = manifest["pipeline"]["model"]
     lookahead = manifest["pipeline"]["preprocess"]["effective"].get("smooth_lookahead") or 0
-    frame_ms = lambda f: (model["patch_size"] + f * model["patch_stride"] + lookahead) * 20.0
+    right = model.get("lookahead_frames") or 0   # frame f's output also waits for frames f+1..f+R
+    frame_ms = lambda f: (model["patch_size"] + (f + right) * model["patch_stride"] + lookahead) * 20.0
     makers = (policies or default_policies()) + [None]  # None = retrospective reference
     results, baseline_rows = [], None
     for make in makers:

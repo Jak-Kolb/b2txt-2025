@@ -75,6 +75,21 @@ class TrainTests(unittest.TestCase):
             train.fork("tiny", "tfm3", ["model.type=transformer"], "q", root=self.results,
                        registry_root=self.registry, models_dir=self.models, data_dir=self.data)
 
+    def test_cli_data_dir_reaches_fork_only_when_given(self):
+        from harness import __main__ as cli
+        seen = []
+
+        def stop_at_fork(*args, **kwargs):
+            seen.append(kwargs)
+            raise RuntimeError("stop after fork")
+        base = ["train", "--from", "tiny", "--name", "x", "--question", "q"]
+        for extra in ([], ["--data-dir", "/data/hdf5_data_t15_t12"]):
+            options = cli.parser().parse_args(base + extra)
+            with patch.object(train, "fork", stop_at_fork), self.assertRaises(RuntimeError):
+                options.func(options)
+        self.assertNotIn("data_dir", seen[0])                     # default stays data/hdf5_data_final
+        self.assertEqual(seen[1]["data_dir"], "/data/hdf5_data_t15_t12")
+
     def test_smoke_exercises_scheduled_snapshots(self):
         train_dir = train.fork("tiny", "snap", [], "Snapshots?", root=self.results, registry_root=self.registry,
                                models_dir=self.models, data_dir=self.data, smoke_batches=20,

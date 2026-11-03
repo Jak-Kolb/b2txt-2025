@@ -122,7 +122,8 @@ def run_timing_check(runtime, spec, scope, run_dir, lm_python, accuracy_words, l
     summary = metrics.timing_check_summary(trace_path)
     summary.update(
         structural_delay=metrics.structural_delay(spec["preprocess"]["effective"],
-                                                  runtime.patch_size, runtime.patch_stride),
+                                                  runtime.patch_size, runtime.patch_stride,
+            lookahead_frames=spec["model"].get("lookahead_frames") or 0),
         equivalence=dict(max_logit_error=max(max_errors) if max_errors else None,
                          tolerance=EQUIVALENCE_TOLERANCE, n_trials=len(max_errors),
                          final_text_compared=compared, final_text_mismatches=mismatched,
@@ -324,7 +325,8 @@ def run_paced(spec, *, root=DEFAULT_ROOT, data_dir=DATA_DIR, scope_name="val-dev
             accuracy["per_diagnostic"] = dict(percent=None, label="not computed in paced runs")
             paced = metrics.paced_summary(trace_path)
             paced.update(structural_delay=metrics.structural_delay(spec["preprocess"]["effective"],
-                                                                   runtime.patch_size, runtime.patch_stride),
+                                                                   runtime.patch_size, runtime.patch_stride,
+            lookahead_frames=spec["model"].get("lookahead_frames") or 0),
                          warmup=warmup, resources=dict(
                              worker_peak_rss_kib=worker_rss,
                              peak_cuda_allocated_bytes=runtime.torch.cuda.max_memory_allocated(runtime.device)
