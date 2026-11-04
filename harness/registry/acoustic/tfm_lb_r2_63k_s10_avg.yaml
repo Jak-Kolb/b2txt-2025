@@ -1,0 +1,11 @@
+name: tfm_lb_r2_63k_s10_avg
+checkpoint_dir: model_training/trained_models/tfm_lb_r2_63k_s10_20261103T204902Z/snapshot_avg
+description: "Uniform weight average of the snapshots at batches [58000, 59000, 60000, 61000, 62000, 62999] of tfm_lb_r2_63k_s10 (chosen before training). 63k-batch step schedule (x0.1 at batch 37800), fixed final snapshot (batch 62999, chosen before training; no checkpoint selection); val-dev greedy PER and WER at acoustic scales 0.25 / 0.3 / 0.4 at gen4g."
+training:
+  config: results/harness/train/20261103T204902Z_tfm_lb_r2_63k_s10/config.yaml
+  log: model_training/trained_models/tfm_lb_r2_63k_s10_20261103T204902Z/training_log
+  forked_from: causal_la0
+  overrides: []
+selection:
+  rule: "uniform average of fixed snapshots [58000, 59000, 60000, 61000, 62000, 62999], chosen before training; no selection"
+  data: [none]
