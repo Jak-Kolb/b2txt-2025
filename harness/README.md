@@ -11,7 +11,7 @@ ignored `results/harness/`. Machine-specific access and service setup live in a 
     .venv/bin/python -m harness compare RUN_A RUN_B         # paired comparison, same scope only
     .venv/bin/python -m harness bench la0_gen4g --tier paced # 1x paced timing on the 70-trial sample (~25 min)
     .venv/bin/python -m harness serve                       # viewer + live player on 127.0.0.1:8765
-    .venv/bin/python -m harness train --from causal_la0 --name wide1024 \
+    .venv/bin/python -m harness train --from gru768_pall_f0_120k_s10_bestval --name gru1024_pall_f0_120k_s10 \
         --set model.n_units=1024 --question "Does width help?" --then-bench la0_gen4g
     .venv/bin/python -m harness train-status
     .venv/bin/python -m harness sweep rd1a_gen4g --grid acoustic_scale=0.3,0.4 --grid blank_penalty=30,90
@@ -24,7 +24,8 @@ The viewer listens on 127.0.0.1 only; from another machine, reach it through an 
 
 A pipeline is an acoustic model + preprocessing + LM graph + eight native decode settings.
 Presets live in `registry/pipelines/`; components in `registry/acoustic/` and `registry/lm/`.
-Ad-hoc compositions: `bench --acoustic causal_la4 --lm gen4g --decode acoustic_scale=0.5`.
+`registry/MODELS.md` explains how acoustic models are named and lists every trained model with its letter ID.
+Ad-hoc compositions: `bench --acoustic gru768_pall_f80_sm80_120k_s10_bestval --lm gen4g --decode acoustic_scale=0.5`.
 Preprocessing is the model's training smoothing; `--preprocess smooth_lookahead=2` is allowed
 but flagged `preprocess_mismatch`. Decode settings depend on the acoustic model; a preset
 records where its settings were tuned (`decode_tuned_on`).
@@ -86,8 +87,9 @@ both; the next Load starts it again (`serve --live-idle-minutes N`, 0 = never).
 are errors), writes it with fresh absolute output paths under `model_training/trained_models/`,
 runs a smoke (default 50 batches with two validations: exit status, finite loss and PER,
 checkpoint written, streamed-vs-offline logits), then launches a detached supervisor. On
-success the supervisor registers `registry/acoustic/<name>.yaml` (provenance, question, git
-state, and the trainer's selection data) and optionally runs a standard benchmark with the
+success the supervisor registers the best-validation checkpoint as `registry/acoustic/<name>_bestval.yaml`
+(provenance, question, git state, and the trainer's selection data; the plain `<name>` is kept for the run's
+fixed final snapshot, see `registry/MODELS.md`) and optionally runs a standard benchmark with the
 given preset's LM and decode settings (flagged `decode_tuned_for_other_acoustic`). Records live
 in `results/harness/train/<id>/`. `--smoke-only` stops after the smoke.
 
@@ -96,7 +98,7 @@ in `results/harness/train/<id>/`. `--smoke-only` stops after the smoke.
 GRU's day layers and patching, ALiBi attention over a fixed window of frames, and a per-layer
 key/value cache for streaming (`model_training/transformer_model.py`):
 
-    .venv/bin/python -m harness train --from causal_la0 --name tfm_d512l8 \
+    .venv/bin/python -m harness train --from gru768_pall_f0_120k_s10_bestval --name tfm512x8_p5120_f0_120k_s10 \
         --add model.type=transformer --add model.transformer.d_model=512 \
         --add model.transformer.n_layers=8 --add model.transformer.n_heads=8 \
         --add model.transformer.ffn_mult=4 --add model.transformer.dropout=0.2 \

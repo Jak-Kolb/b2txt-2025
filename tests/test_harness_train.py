@@ -170,11 +170,13 @@ class TrainTests(unittest.TestCase):
         self.assertEqual(code, 0)
         state = json.loads((train_dir / "state.json").read_text())
         self.assertEqual(state["state"], "benchmarked")
-        entry = registry.load_kind("acoustic", self.registry)["wide"]
+        entries = registry.load_kind("acoustic", self.registry)
+        self.assertNotIn("wide", entries)                  # the plain name is kept for a final snapshot
+        entry = entries["wide_bestval"]
         self.assertEqual(entry["training"]["forked_from"], "tiny")
         self.assertEqual(entry["selection"]["data"], ["val-dev", "former-val-test"])
         manifest = json.loads((self.results / "runs" / state["benchmark_run"] / "manifest.json").read_text())
-        self.assertEqual(manifest["pipeline"]["acoustic"]["name"], "wide")
+        self.assertEqual(manifest["pipeline"]["acoustic"]["name"], "wide_bestval")
         self.assertIn("decode_tuned_for_other_acoustic", manifest["flags"])
         with self.assertRaises(FileExistsError):
             train.register(train_dir, self.registry)

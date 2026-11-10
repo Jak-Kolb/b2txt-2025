@@ -1,0 +1,29 @@
+name: gru1344_head256_pall_f80_20k_s10_bestval
+aliases: [la1344_r1_s10]
+checkpoint_dir: model_training/trained_models/la1344_r1_s10_20261020T075433Z/checkpoint
+description: 'Fork of A2: 5x1344 with 80 ms look-ahead (R = 1): CTC-ensemble
+  member for the R = 2 decider at 500 ms. A2 seeds. 20k-batch schedule (num_training_batches
+  = lr_decay_steps = lr_decay_steps_day = 20000), fixed final snapshot (batch 19999,
+  chosen before training; no checkpoint selection); val-dev greedy PER and WER over
+  acoustic scales 0.25-0.6 at gen4g.'
+training:
+  config: results/harness/train/20261020T075433Z_la1344_r1_s10/config.yaml
+  log: model_training/trained_models/la1344_r1_s10_20261020T075433Z/training_log
+  forked_from: gru768_pall_f0_120k_s10_bestval
+  overrides:
+  - model.lookahead_frames=1
+  - model.lookahead_units=256
+  - checkpoint_batches=[19999]
+  - num_training_batches=20000
+  - lr_decay_steps=20000
+  - lr_decay_steps_day=20000
+  - model.n_units=1344
+  git_head: 76ad635094b50bfcfa575ffe2251c51b64b47363
+  git_dirty: true
+  train_dir: results/harness/train/20261020T075433Z_la1344_r1_s10
+selection:
+  rule: 'rnn_trainer best greedy-CTC val PER (ties: val loss) over all enabled val
+    sessions'
+  data:
+  - val-dev
+  - former-val-test

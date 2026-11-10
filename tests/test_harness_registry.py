@@ -79,6 +79,27 @@ class RegistryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "file name"):
             registry.load_kind("pipelines", bad)
 
+    def test_former_name_finds_the_renamed_entry(self):
+        path = self.registry / "acoustic" / "renamed.yaml"
+        checkpoint = self.registry.parent / "models" / "tiny" / "checkpoint"
+        path.write_text(f"name: renamed\naliases: [old_name]\ncheckpoint_dir: {checkpoint}\n")
+        try:
+            entries = registry.load_kind("acoustic", self.registry)
+            self.assertIs(entries["old_name"], entries["renamed"])
+            self.assertIn("old_name", entries)
+            self.assertNotIn("old_name", list(entries))
+            self.assertIsNone(entries.get("missing"))
+            with self.assertRaises(KeyError):
+                entries["missing"]
+            spec = self.resolve(acoustic="old_name", lm="fake")
+            self.assertEqual(spec["acoustic"]["name"], "renamed")
+            self.assertEqual(spec["name"], "renamed+fake")
+            path.write_text(f"name: renamed\naliases: [tiny]\ncheckpoint_dir: {checkpoint}\n")
+            with self.assertRaisesRegex(ValueError, "alias"):
+                registry.load_kind("acoustic", self.registry)
+        finally:
+            path.unlink()
+
     def test_preset_decode_override_requires_provenance(self):
         path = self.registry / "pipelines" / "untracked.yaml"
         path.write_text("name: untracked\nacoustic: tiny\nlm: fake\ndecode: {beam: 3}\n")
@@ -90,9 +111,11 @@ class RegistryTests(unittest.TestCase):
 
     def test_real_registry_entries_load(self):
         loaded = registry.load_all()
-        self.assertIn("causal_la0", loaded["acoustic"])
+        names = list(loaded["acoustic"])
+        self.assertIn("gru768_pall_f0_120k_s10_bestval", names)
+        self.assertEqual(loaded["acoustic"]["causal_la0"]["name"], "gru768_pall_f0_120k_s10_bestval")   # former name
         for preset in loaded["pipelines"].values():
-            self.assertIn(preset["acoustic"], loaded["acoustic"])
+            self.assertIn(preset["acoustic"], names)
             self.assertIn(preset["lm"], loaded["lm"])
 
 

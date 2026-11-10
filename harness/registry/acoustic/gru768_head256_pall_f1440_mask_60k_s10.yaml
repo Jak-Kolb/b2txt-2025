@@ -1,0 +1,10 @@
+name: gru768_head256_pall_f1440_mask_60k_s10
+aliases: [g2_la_r18_60k_s10_b59999]
+checkpoint_dir: model_training/trained_models/g2_la_r18_60k_s10_20261017T064028Z/snapshot_b59999
+description: "Snapshot at batch 59999 of a 60k cosine schedule. 60k-batch schedule (num_training_batches = lr_decay_steps = lr_decay_steps_day = 60000), fixed final snapshot (batch 59999, chosen before training; no checkpoint selection); val-dev greedy PER and WER over acoustic scales 0.25-0.6 at gen4g."
+training:
+  config: results/harness/train/20261017T064028Z_g2_la_r18_60k_s10/config.yaml
+  forked_from: gru768_pall_f0_120k_s10_bestval
+selection:
+  rule: "fixed snapshot (batch 59999), chosen before training"
+  data: [none]

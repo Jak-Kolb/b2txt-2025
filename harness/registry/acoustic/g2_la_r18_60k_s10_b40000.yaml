@@ -1,9 +1,0 @@
-name: g2_la_r18_60k_s10_b40000
-checkpoint_dir: model_training/trained_models/g2_la_r18_60k_s10_20261017T064028Z/snapshot_b40000
-description: "Snapshot at batch 40000 of a 60k cosine schedule. 60k-batch schedule (num_training_batches = lr_decay_steps = lr_decay_steps_day = 60000), fixed final snapshot (batch 59999, chosen before training; no checkpoint selection); val-dev greedy PER and WER over acoustic scales 0.25-0.6 at gen4g."
-training:
-  config: results/harness/train/20261017T064028Z_g2_la_r18_60k_s10/config.yaml
-  forked_from: causal_la0
-selection:
-  rule: "fixed snapshot (batch 40000), chosen before training"
-  data: [none]

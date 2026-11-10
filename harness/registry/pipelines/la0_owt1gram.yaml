@@ -1,6 +1,6 @@
 name: la0_owt1gram
-description: "causal_la0 + shipped 1-gram (small, fast to load)."
-acoustic: causal_la0
+description: "A2 + shipped 1-gram (small, fast to load)."
+acoustic: gru768_pall_f0_120k_s10_bestval
 lm: owt1gram
 decode: {}
 decode_tuned_on: inherit

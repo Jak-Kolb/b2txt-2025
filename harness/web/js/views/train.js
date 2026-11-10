@@ -5,9 +5,9 @@ export async function trainView(main) {
   const rows = await getJSON("/api/train");
   main.replaceChildren(
     el("h1", { text: "Training" }),
-    el("div", { class: "sub", text: "Launch from the CLI: .venv/bin/python -m harness train --from causal_la0 --name NAME "
-      + "--set model.n_units=1024 --question \"...\" [--then-bench la0_gen4g]. Checkpoints are selected by the trainer's "
-      + "val PER over all enabled val sessions (recorded on the registered model)." }),
+    el("div", { class: "sub", text: "Launch from the CLI: .venv/bin/python -m harness train --from gru768_pall_f0_120k_s10_bestval --name NAME "
+      + "--set model.n_units=1024 --question \"...\" [--then-bench la0_gen4g]. The best-validation checkpoint is registered as "
+      + "NAME_bestval (selected by the trainer's val PER over all enabled val sessions; names: harness/registry/MODELS.md)." }),
     rows.length ? el("div", { class: "card table-wrap" }, el("table", {},
       el("thead", {}, el("tr", {}, ["Run", "Model", "Overrides", "Question", "State", "Last val PER", "Benchmark"].map((h) => el("th", { text: h })))),
       el("tbody", {}, rows.map((r) => el("tr", {},

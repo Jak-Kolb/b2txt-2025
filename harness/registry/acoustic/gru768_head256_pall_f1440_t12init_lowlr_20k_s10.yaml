@@ -1,0 +1,12 @@
+name: gru768_head256_pall_f1440_t12init_lowlr_20k_s10
+aliases: [ft_lowlr_t12_la_r18_s10_final]
+checkpoint_dir: model_training/trained_models/ft_lowlr_t12_la_r18_s10_20261015T144232Z/snapshot_final
+description: "Fixed final snapshot (batch 19999) of F13. Complete 20k-batch schedule (num_training_batches = lr_decay_steps = lr_decay_steps_day = 20000; A2 recipe otherwise). Evaluated at the fixed final snapshot (batch 19999, chosen before training; no checkpoint selection) on val-dev with gen4g at acoustic scales 0.25/0.3/0.4/0.5/0.6, blank 90, the same grid for every anchor."
+training:
+  config: results/harness/train/20261015T144232Z_ft_lowlr_t12_la_r18_s10/config.yaml
+  log: model_training/trained_models/ft_lowlr_t12_la_r18_s10_20261015T144232Z/training_log
+  forked_from: gru768_pall_f0_120k_s10_bestval
+  overrides: []
+selection:
+  rule: "fixed final snapshot (batch 19999), chosen before training; no checkpoint selection"
+  data: [none]

@@ -1,0 +1,12 @@
+name: gru768_head256_pall_f1440_sslcon_60k_s10
+aliases: [ft60k_ssl3_con_la_r18_s10_final]
+checkpoint_dir: model_training/trained_models/ft60k_ssl3_con_la_r18_s10_20261016T223109Z/snapshot_final
+description: "Fixed final snapshot (batch 59999) of F19. 60k-batch schedule (num_training_batches = lr_decay_steps = lr_decay_steps_day = 60000), fixed final snapshot (batch 59999, chosen before training; no checkpoint selection); val-dev greedy PER and WER over acoustic scales 0.25-0.6 at gen4g."
+training:
+  config: results/harness/train/20261016T223109Z_ft60k_ssl3_con_la_r18_s10/config.yaml
+  log: model_training/trained_models/ft60k_ssl3_con_la_r18_s10_20261016T223109Z/training_log
+  forked_from: gru768_pall_f0_120k_s10_bestval
+  overrides: []
+selection:
+  rule: "fixed final snapshot (batch 59999), chosen before training; no checkpoint selection"
+  data: [none]

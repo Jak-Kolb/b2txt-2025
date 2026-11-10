@@ -25,6 +25,7 @@ from .store import (DEFAULT_ROOT, git_provenance, pid_alive, replace_json, safe_
 MODEL_TRAINING = REPO / "model_training"
 TRAINED_MODELS = MODEL_TRAINING / "trained_models"
 NAME = re.compile(r"^[A-Za-z0-9_-]{1,60}$")
+BEST = "_bestval"   # registry suffix of the best-validation checkpoint; the plain name is the final snapshot
 TRAIN_LINE = re.compile(r"Train batch (\d+): loss: (\S+)")
 VAL_LINE = re.compile(r"Val batch (\d+): PER \(avg\): (\S+)")
 INFEASIBLE_LINE = re.compile(r"CTC-infeasible training targets so far: (\d+) / (\d+)")
@@ -60,7 +61,7 @@ def fork(base, name, overrides, question, root=DEFAULT_ROOT, registry_root=regis
     if not NAME.match(name):
         raise ValueError("name must be 1-60 letters, digits, '_' or '-'")
     entries = registry.load_kind("acoustic", registry_root)
-    if name in entries:
+    if name in entries or f"{name}{BEST}" in entries:
         raise FileExistsError(f"Acoustic model {name!r} is already registered")
     if not question or not question.strip():
         raise ValueError("State the question this training run answers (--question)")
@@ -102,7 +103,7 @@ def fork(base, name, overrides, question, root=DEFAULT_ROOT, registry_root=regis
     with (train_dir / "smoke_config.yaml").open("x") as handle:
         handle.write(OmegaConf.to_yaml(smoke))
     write_new_json(train_dir / "request.json", dict(
-        name=name, forked_from=base, overrides=list(overrides), additions=list(additions), question=question.strip(),
+        name=name, forked_from=base_entry["name"], overrides=list(overrides), additions=list(additions), question=question.strip(),
         smoke_batches=int(smoke_batches), created=now(), model_dir=str(model_dir),
         code=git_provenance(train_dir), selection=SELECTION))
     set_state(train_dir, state="forked", name=name, model_dir=str(model_dir))
@@ -213,23 +214,29 @@ def launch(train_dir, then_bench=None, root=DEFAULT_ROOT, not_before=None):
 
 
 def register(train_dir, registry_root=registry.REGISTRY_DIR):
-    """Add the finished checkpoint to the acoustic registry (a new file; never an edit)."""
+    """Add the finished checkpoint to the acoustic registry (a new file; never an edit).
+
+    The trainer keeps the checkpoint with the best validation phoneme error, so the entry is NAME_bestval; the plain
+    NAME is left for the run's fixed final snapshot (harness/registry/MODELS.md, "Weights")."""
     import yaml
     train_dir = Path(train_dir)
     request = json.loads((train_dir / "request.json").read_text())
     checkpoint_dir = Path(request["model_dir"]) / "checkpoint"
     if not (checkpoint_dir / "best_checkpoint").exists():
         raise FileNotFoundError(checkpoint_dir / "best_checkpoint")
-    checkpoint = str(checkpoint_dir.relative_to(REPO)) if checkpoint_dir.is_relative_to(REPO) else str(checkpoint_dir)
-    entry = dict(name=request["name"], checkpoint_dir=checkpoint,
+    def rel(path):
+        path = Path(path).resolve()
+        return str(path.relative_to(REPO)) if path.is_relative_to(REPO) else str(path)
+    name = f"{request['name']}{BEST}"
+    entry = dict(name=name, checkpoint_dir=rel(checkpoint_dir),
                  description=f"Fork of {request['forked_from']}: {request['question']}",
-                 training=dict(config=str(train_dir / "config.yaml"), log=str(Path(request["model_dir"]) / "training_log"),
+                 training=dict(config=rel(train_dir / "config.yaml"), log=rel(Path(request["model_dir"]) / "training_log"),
                                forked_from=request["forked_from"],
                                overrides=request.get("additions", []) + request["overrides"],
                                git_head=request["code"]["head"], git_dirty=request["code"]["dirty"],
-                               train_dir=str(train_dir)),
+                               train_dir=rel(train_dir)),
                  selection=request["selection"])
-    path = Path(registry_root) / "acoustic" / f"{request['name']}.yaml"
+    path = Path(registry_root) / "acoustic" / f"{name}.yaml"
     with path.open("x") as handle:
         yaml.safe_dump(entry, handle, sort_keys=False)
     return path
@@ -258,7 +265,7 @@ def supervise(train_dir, root=DEFAULT_ROOT, trainer=trainer_command, registry_ro
     if state.get("then_bench"):
         from . import bench
         from .store import flocked, lock_path
-        spec = registry.resolve(state["then_bench"], acoustic=request["name"], root=registry_root)
+        spec = registry.resolve(state["then_bench"], acoustic=f"{request['name']}{BEST}", root=registry_root)
         set_state(train_dir, state="benchmark_waiting")
         with flocked(lock_path(root, "job")):   # wait for any running benchmark
             pass

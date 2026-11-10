@@ -25,7 +25,7 @@ from .bench import STREAM_LM, decode_flags, load_run
 from .store import DEFAULT_ROOT, fresh_dir, ram_guard, replace_json, utc_stamp, write_new_json
 
 LABEL = ("utterance-final rescoring after the dataset trial end (oracle endpoint); not low-latency committed "
-         "text. Frozen weights were tuned on val-dev with causal_la0 (exposed)")
+         "text. Frozen weights were tuned on val-dev with gru768_pall_f0_120k_s10_bestval (exposed)")
 
 
 def nbest(run_manifest, out_dir, lm_python, n, log=print):

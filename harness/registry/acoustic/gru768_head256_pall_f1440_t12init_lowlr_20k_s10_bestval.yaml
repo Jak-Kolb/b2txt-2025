@@ -1,0 +1,34 @@
+name: gru768_head256_pall_f1440_t12init_lowlr_20k_s10_bestval
+aliases: [ft_lowlr_t12_la_r18_s10]
+checkpoint_dir: model_training/trained_models/ft_lowlr_t12_la_r18_s10_20261015T144232Z/checkpoint
+description: 'Fork of A2: T15 fine-tune of F4 (1440 ms look-ahead) from
+  T12-only pretraining (pre_t12_la_r18_s10_20261015T120753Z): all weights but the
+  day layers loaded, fresh optimizer, T15-only 20k schedule. T12 trials whose sentence
+  matches a val-dev sentence were removed (469; 9,211 remain). A2 seeds. Recipe:
+  shared-layer lr_max 0.0015 instead of 0.005 (day layers 0.005). Complete 20k-batch
+  schedule (num_training_batches = lr_decay_steps = lr_decay_steps_day = 20000; A2
+  recipe otherwise). Evaluated at the fixed final snapshot (batch 19999, chosen before
+  training; no checkpoint selection) on val-dev with gen4g at acoustic scales 0.25/0.3/0.4/0.5/0.6,
+  blank 90, the same grid for every anchor.'
+training:
+  config: results/harness/train/20261015T144232Z_ft_lowlr_t12_la_r18_s10/config.yaml
+  log: model_training/trained_models/ft_lowlr_t12_la_r18_s10_20261015T144232Z/training_log
+  forked_from: gru768_pall_f0_120k_s10_bestval
+  overrides:
+  - model.lookahead_frames=18
+  - model.lookahead_units=256
+  - checkpoint_batches=[19999]
+  - init_shared_from_checkpoint=/home/fishinjak/code/nejm-brain-to-text/model_training/trained_models/pre_t12_la_r18_s10_20261015T120753Z/checkpoint/checkpoint_batch_19999
+  - lr_max=0.0015
+  - num_training_batches=20000
+  - lr_decay_steps=20000
+  - lr_decay_steps_day=20000
+  git_head: 76ad635094b50bfcfa575ffe2251c51b64b47363
+  git_dirty: true
+  train_dir: results/harness/train/20261015T144232Z_ft_lowlr_t12_la_r18_s10
+selection:
+  rule: 'rnn_trainer best greedy-CTC val PER (ties: val loss) over all enabled val
+    sessions'
+  data:
+  - val-dev
+  - former-val-test

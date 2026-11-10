@@ -1,0 +1,32 @@
+name: gru768_pall_f0_mask_20k_s10_bestval
+aliases: [g2_causal_20k_s10]
+checkpoint_dir: model_training/trained_models/g2_causal_20k_s10_20261015T205001Z/checkpoint
+description: 'Fork of A2: A3 recipe (shared 7.5% time masking, 10% channel
+  masking, random_cut 4) on causal 5x768 at 20k: masking lever at 20k and a 20k->120k
+  fidelity check. A2 seeds. Complete 20k-batch schedule (num_training_batches = lr_decay_steps
+  = lr_decay_steps_day = 20000; A2 recipe otherwise). Evaluated at the fixed final
+  snapshot (batch 19999, chosen before training; no checkpoint selection) on val-dev
+  with gen4g at acoustic scales 0.25/0.3/0.4/0.5/0.6, blank 90, the same grid for
+  every anchor.'
+training:
+  config: results/harness/train/20261015T205001Z_g2_causal_20k_s10/config.yaml
+  log: model_training/trained_models/g2_causal_20k_s10_20261015T205001Z/training_log
+  forked_from: gru768_pall_f0_120k_s10_bestval
+  overrides:
+  - dataset.data_transforms.time_mask_n=20
+  - dataset.data_transforms.time_mask_max_frac=0.075
+  - dataset.data_transforms.channel_mask_rate=0.1
+  - checkpoint_batches=[19999]
+  - dataset.data_transforms.random_cut=4
+  - num_training_batches=20000
+  - lr_decay_steps=20000
+  - lr_decay_steps_day=20000
+  git_head: 76ad635094b50bfcfa575ffe2251c51b64b47363
+  git_dirty: true
+  train_dir: results/harness/train/20261015T205001Z_g2_causal_20k_s10
+selection:
+  rule: 'rnn_trainer best greedy-CTC val PER (ties: val loss) over all enabled val
+    sessions'
+  data:
+  - val-dev
+  - former-val-test

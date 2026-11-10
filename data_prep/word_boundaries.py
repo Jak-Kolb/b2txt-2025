@@ -4,7 +4,7 @@ brainstorm/PLAN.md step 3). Prepared 2026-11-09.
 A registered acoustic model's log-probs on each TRAINING trial are force-aligned to the trial's own phoneme labels
 (CTC Viterbi, learning/live_eval/clock_a.viterbi_label_ends). For each ' | ' label that separates two words, the cut
 is the input bin at the centre of that label's aligned frames: bin = 4 * (first + last) / 2 + 7 for patch 14 /
-stride 4. With the bidirectional aligner (default anc_bi768_s10_final) emissions sit near the evidence; a causal
+stride 4. With the bidirectional aligner (default bigru768_pall_fall_20k_s10) emissions sit near the evidence; a causal
 aligner would cut late. This is an alignment proxy, not measured word timing. The aligner was trained on these
 trials, which is fine for cutting training data and is never used for evaluation.
 Output: results/word_boundaries/MODEL.json = {session: {trial index: [[cut_bin, n_labels_before_cut], ...]}}.
@@ -42,7 +42,7 @@ def boundaries(lp, ids, patch=14, stride=4):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="anc_bi768_s10_final")
+    ap.add_argument("--model", default="bigru768_pall_fall_20k_s10")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--sessions", nargs="*")

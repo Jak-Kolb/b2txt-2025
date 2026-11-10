@@ -120,7 +120,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--encoder", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--boundaries", default=str(REPO / "results/word_boundaries/anc_bi768_s10_final.json"))
+    ap.add_argument("--boundaries", default=str(REPO / "results/word_boundaries/bigru768_pall_fall_20k_s10.json"))
     ap.add_argument("--steps", type=int, default=20000)
     ap.add_argument("--batch", type=int, default=32)
     ap.add_argument("--lr", type=float, default=5e-4)

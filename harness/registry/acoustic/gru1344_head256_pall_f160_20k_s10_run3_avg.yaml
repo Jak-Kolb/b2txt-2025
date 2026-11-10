@@ -1,0 +1,12 @@
+name: gru1344_head256_pall_f160_20k_s10_run3_avg
+aliases: [snap_la1344_r2_20k_s10_avg]
+checkpoint_dir: model_training/trained_models/snap_la1344_r2_20k_s10_20261028T171947Z/snapshot_avg
+description: "Uniform weight average of the snapshots at batches [15000, 16000, 17000, 18000, 19000, 19999] of G15 (chosen before training). 20k-batch schedule (num_training_batches = lr_decay_steps = lr_decay_steps_day = 20000), fixed final snapshot (batch 19999, chosen before training; no checkpoint selection); val-dev greedy PER and WER at acoustic scales 0.25 / 0.3 / 0.4 at gen4g."
+training:
+  config: results/harness/train/20261028T171947Z_snap_la1344_r2_20k_s10/config.yaml
+  log: model_training/trained_models/snap_la1344_r2_20k_s10_20261028T171947Z/training_log
+  forked_from: gru768_pall_f0_120k_s10_bestval
+  overrides: []
+selection:
+  rule: "uniform average of fixed snapshots [15000, 16000, 17000, 18000, 19000, 19999], chosen before training; no selection"
+  data: [none]

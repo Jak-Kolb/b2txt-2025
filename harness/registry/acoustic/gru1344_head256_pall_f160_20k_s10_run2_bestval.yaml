@@ -1,0 +1,29 @@
+name: gru1344_head256_pall_f160_20k_s10_run2_bestval
+aliases: [fix_la1344_r2_s10]
+checkpoint_dir: model_training/trained_models/fix_la1344_r2_s10_20261027T103926Z/checkpoint
+description: 'Fork of A2: GRU control on the fixed patching: G2 (5x1344,
+  160 ms look-ahead), 20k, A2 seeds; vs pre-fix G2 / G13. See results/harness/queue/tfm2_20261026.py.
+  20k-batch schedule (num_training_batches = lr_decay_steps = lr_decay_steps_day =
+  20000), fixed final snapshot (batch 19999, chosen before training; no checkpoint
+  selection); val-dev greedy PER and WER over acoustic scales 0.25-0.6 at gen4g.'
+training:
+  config: results/harness/train/20261027T103926Z_fix_la1344_r2_s10/config.yaml
+  log: model_training/trained_models/fix_la1344_r2_s10_20261027T103926Z/training_log
+  forked_from: gru768_pall_f0_120k_s10_bestval
+  overrides:
+  - model.lookahead_frames=2
+  - model.lookahead_units=256
+  - checkpoint_batches=[19999]
+  - num_training_batches=20000
+  - lr_decay_steps=20000
+  - lr_decay_steps_day=20000
+  - model.n_units=1344
+  git_head: 76ad635094b50bfcfa575ffe2251c51b64b47363
+  git_dirty: true
+  train_dir: results/harness/train/20261027T103926Z_fix_la1344_r2_s10
+selection:
+  rule: 'rnn_trainer best greedy-CTC val PER (ties: val loss) over all enabled val
+    sessions'
+  data:
+  - val-dev
+  - former-val-test

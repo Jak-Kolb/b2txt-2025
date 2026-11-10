@@ -19,7 +19,7 @@ DECODE_KEYS = ("acoustic_scale", "blank_penalty", "beam", "lattice_beam", "max_a
 INT_DECODE_KEYS = ("max_active", "min_active")
 PREPROCESS_KEYS = ("smooth_data", "smooth_kernel_std", "smooth_kernel_size", "smooth_lookahead")
 KINDS = {
-    "acoustic": ({"name", "checkpoint_dir"}, {"description", "training", "selection"}),
+    "acoustic": ({"name", "checkpoint_dir"}, {"description", "training", "selection", "aliases"}),
     "lm": ({"name", "graph_dir", "default_decode"},
            {"description", "expected_rss_gb", "default_decode_tuned_on"}),
     "pipelines": ({"name", "acoustic", "lm"},
@@ -33,9 +33,27 @@ def repo_path(path):
     return path if path.is_absolute() else REPO / path
 
 
+class Entries(dict):
+    """Entries by name. A former name listed under an entry's `aliases` finds the same entry; iteration gives
+    current names only (harness/registry/MODELS.md lists every model with its former name)."""
+
+    def __init__(self):
+        super().__init__()
+        self.aliases = {}
+
+    def __missing__(self, key):
+        return self[self.aliases[key]]
+
+    def __contains__(self, key):
+        return super().__contains__(key) or key in self.aliases
+
+    def get(self, key, default=None):
+        return self[key] if key in self else default
+
+
 def load_kind(kind, root=REGISTRY_DIR):
     required, optional = KINDS[kind]
-    entries = {}
+    entries = Entries()
     for path in sorted((Path(root) / kind).glob("*.yaml")):
         entry = yaml.safe_load(path.read_text())
         if not isinstance(entry, dict):
@@ -47,6 +65,11 @@ def load_kind(kind, root=REGISTRY_DIR):
         if entry["name"] != path.stem:
             raise ValueError(f"{path}: name must match the file name")
         entries[entry["name"]] = entry
+    for name, entry in entries.items():
+        for alias in entry.get("aliases") or []:
+            if alias in entries:
+                raise ValueError(f"{kind}/{name}: alias {alias!r} is already a name or an alias")
+            entries.aliases[alias] = name
     return entries
 
 
@@ -93,9 +116,9 @@ def resolve(pipeline=None, *, acoustic=None, lm=None, decode=None, preprocess=No
     preset = registry["pipelines"][pipeline] if pipeline else {}
     if pipeline is None and not (acoustic and lm):
         raise ValueError("Give a pipeline preset or both --acoustic and --lm")
-    acoustic_name = acoustic or preset["acoustic"]
     lm_name = lm or preset["lm"]
-    acoustic_entry = registry["acoustic"][acoustic_name]
+    acoustic_entry = registry["acoustic"][acoustic or preset["acoustic"]]
+    acoustic_name = acoustic_entry["name"]   # the current name, also when a former name was given
     lm_entry = registry["lm"][lm_name]
 
     preset_decode = check_decode(preset.get("decode") or {}, complete=False)

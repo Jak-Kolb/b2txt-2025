@@ -1,0 +1,12 @@
+name: tfm384x8_conv_p5120_f160_ent12_20k_s10
+aliases: [tfm_conv_ent12_r2_20k_s10_final]
+checkpoint_dir: model_training/trained_models/tfm_conv_ent12_r2_20k_s10_20261027T153323Z/snapshot_final
+description: "Fixed final snapshot (batch 19999) of X5. 20k-batch schedule (num_training_batches = lr_decay_steps = lr_decay_steps_day = 20000), fixed final snapshot (batch 19999, chosen before training; no checkpoint selection); val-dev greedy PER and WER at acoustic scales 0.25 / 0.3 / 0.4 at gen4g."
+training:
+  config: results/harness/train/20261027T153323Z_tfm_conv_ent12_r2_20k_s10/config.yaml
+  log: model_training/trained_models/tfm_conv_ent12_r2_20k_s10_20261027T153323Z/training_log
+  forked_from: gru768_pall_f0_120k_s10_bestval
+  overrides: []
+selection:
+  rule: "fixed final snapshot (batch 19999), chosen before training; no checkpoint selection"
+  data: [none]

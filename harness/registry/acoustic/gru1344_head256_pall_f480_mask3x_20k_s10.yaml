@@ -1,0 +1,12 @@
+name: gru1344_head256_pall_f480_mask3x_20k_s10
+aliases: [m3x_la1344_r6_20k_s10_final]
+checkpoint_dir: model_training/trained_models/m3x_la1344_r6_20k_s10_20261018T014648Z/snapshot_final
+description: "Fixed final snapshot (batch 19999) of G8. 20k-batch schedule (num_training_batches = lr_decay_steps = lr_decay_steps_day = 20000), fixed final snapshot (batch 19999, chosen before training; no checkpoint selection); val-dev greedy PER and WER over acoustic scales 0.25-0.6 at gen4g."
+training:
+  config: results/harness/train/20261018T014648Z_m3x_la1344_r6_20k_s10/config.yaml
+  log: model_training/trained_models/m3x_la1344_r6_20k_s10_20261018T014648Z/training_log
+  forked_from: gru768_pall_f0_120k_s10_bestval
+  overrides: []
+selection:
+  rule: "fixed final snapshot (batch 19999), chosen before training; no checkpoint selection"
+  data: [none]

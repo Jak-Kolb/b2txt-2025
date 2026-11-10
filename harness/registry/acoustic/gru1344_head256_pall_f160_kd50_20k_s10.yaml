@@ -1,0 +1,12 @@
+name: gru1344_head256_pall_f160_kd50_20k_s10
+aliases: [kd_la1344_r2_20k_s10_final]
+checkpoint_dir: model_training/trained_models/kd_la1344_r2_20k_s10_20261019T121825Z/snapshot_final
+description: "Fixed final snapshot (batch 19999) of G10. 20k-batch schedule (num_training_batches = lr_decay_steps = lr_decay_steps_day = 20000), fixed final snapshot (batch 19999, chosen before training; no checkpoint selection); val-dev greedy PER and WER over acoustic scales 0.25-0.6 at gen4g."
+training:
+  config: results/harness/train/20261019T121825Z_kd_la1344_r2_20k_s10/config.yaml
+  log: model_training/trained_models/kd_la1344_r2_20k_s10_20261019T121825Z/training_log
+  forked_from: gru768_pall_f0_120k_s10_bestval
+  overrides: []
+selection:
+  rule: "fixed final snapshot (batch 19999), chosen before training; no checkpoint selection"
+  data: [none]
