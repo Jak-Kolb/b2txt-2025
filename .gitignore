@@ -63,10 +63,8 @@ presentations/*
 current_knowledge.md
 TORCH_COMPILE_BUG.md
 transformer_tests_explanation.md
-# Archive of superseded documents. New files here stay local; the files
-# already committed in this folder remain tracked.
-docs/history/
-# Personal explainer scripts and figures
+# Personal explainer scripts and figures. One file is tracked (added with -f) because tests/ and data_prep/
+# import it: learning/live_eval/clock_a.py
 learning/
 
 # Local machine logistics
