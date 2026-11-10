@@ -65,7 +65,7 @@ linear regression referencing, -4.5 x RMS threshold crossings and mean-squared s
 T15 features look **per-block z-scored and then clipped at +10**. Pooled over all trials of each
 (session, block), the median |mean| per feature is 0.008 for crossings and 0.012 for SBP, and the
 median SD is 1.00. The maximum is exactly 10.0 (6.8e-5 of values at the rail) and the minimum is
--4.2. As brainstorm/audit/AUDIT.md (F1) found, the T15 statistics appear to come from the whole
+-4.2. As the August 2026 audit found (finding F1 in `docs/history/audit_2026-08/AUDIT.md`), the T15 statistics appear to come from the whole
 block, including periods that were not released. T12 provides only go-period snippets, so its
 statistics use only the trials. The converted T12 blocks therefore have mean 0 and SD 1 exactly,
 and slightly more values reach the rail (1.9e-4). Both datasets use the same family of
