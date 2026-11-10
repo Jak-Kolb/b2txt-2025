@@ -1,4 +1,4 @@
-"""Bounded look-ahead GRU: exact right-context support, padded-batch consistency, capacity control, offline handling."""
+"""Bounded look-ahead GRU: exact right-context support, padded-batch consistency, capacity control, streaming."""
 import sys
 import tempfile
 import unittest
@@ -11,10 +11,10 @@ import numpy as np
 import torch
 
 import harness_fixture as fx
-from harness import registry
+from harness import metrics, registry
 from harness.train import streaming_check
 from model_training.benchmark.common import build_model, offline_logits
-from model_training.benchmark.streaming_infer import run_streaming_trial
+from model_training.benchmark.streaming_infer import StreamingDecoder, run_streaming_trial
 
 
 def args(frames, units=6):
@@ -92,11 +92,36 @@ class LookaheadTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_model(args(2, units=0))
 
-    def test_offline_handling(self):
+    def test_streaming_matches_offline(self):
+        for frames in (0, 1, 3):
+            cfg = args(frames)
+            model = build_model(cfg).eval()
+            for n_bins in (41, 9):                           # 9 bins: 4 frames, fewer than R + 1 for R = 3 at the end
+                features = self.features[:n_bins]
+                result = run_streaming_trial(model, cfg, torch.device("cpu"), features, 1, enable_timing=False)
+                offline = self.logits(model, cfg, features)
+                self.assertEqual(result["n_frames"], offline.shape[0])
+                torch.testing.assert_close(result["logits"].float(), offline.float(), rtol=1e-5, atol=1e-5)
+
+    def test_streaming_emits_frame_t_when_frame_t_plus_r_arrives(self):
+        cfg = args(3)
+        model = build_model(cfg).eval()
+        decoder = StreamingDecoder(model, cfg, 1, torch.device("cpu"))
+        lookahead = int(cfg["dataset"]["data_transforms"]["smooth_lookahead"])
+        emitted = []
+        for raw in self.features:
+            emitted.append(len(decoder.process_bin(raw)))
+        tail = len(decoder.finish())
+        causal_frames = decoder.n_emitted_frames              # all outputs, streamed plus flushed
+        first = next(i for i, n in enumerate(emitted) if n)
+        # Causal frame k is ready at bin 2k + 2 (+ smoothing look-ahead); output 0 waits for causal frame 3
+        self.assertEqual(first, 2 * 3 + 2 + lookahead)
+        self.assertEqual(sum(emitted) + tail, causal_frames)
+        self.assertEqual(tail, 3)
+
+    def test_registry_and_streaming_check(self):
         cfg = args(2)
         model = build_model(cfg).eval()
-        with self.assertRaises(ValueError):
-            run_streaming_trial(model, cfg, torch.device("cpu"), self.features, 1, enable_timing=False)
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             reg = fx.make_registry(root)
@@ -108,13 +133,17 @@ class LookaheadTests(unittest.TestCase):
             (reg / "acoustic" / "tiny_la.yaml").write_text(
                 f"name: tiny_la\ncheckpoint_dir: {checkpoint}\nselection: {{rule: test, data: [val-dev]}}\n")
             spec = registry.resolve(acoustic="tiny_la", lm="fake", root=reg)
-            self.assertFalse(spec["streaming_capable"])
+            self.assertTrue(spec["streaming_capable"])
             flags = registry.flags(spec, "val-dev")
-            self.assertIn("offline_lookahead_80ms", flags)     # 2 frames x stride 2 bins x 20 ms
+            self.assertIn("lookahead_80ms", flags)             # 2 frames x stride 2 bins x 20 ms
             self.assertNotIn("offline_noncausal", flags)
-            self.assertEqual(streaming_check(checkpoint, root, device="cpu"),
-                             dict(skipped="look-ahead model (no streaming implementation yet)"))
-
+            self.assertFalse(any(f.startswith("offline_lookahead") for f in flags))
+            check = streaming_check(checkpoint, fx.make_data(root), device="cpu")
+            self.assertTrue(check["passed"], check)
+            delay = metrics.structural_delay(spec["preprocess"]["effective"], 3, 2, lookahead_frames=2)
+            self.assertEqual(delay["model_lookahead_ms"], 80.0)
+            self.assertEqual(delay["first_output_ms"],
+                             metrics.structural_delay(spec["preprocess"]["effective"], 3, 2)["first_output_ms"] + 80.0)
 
 if __name__ == "__main__":
     unittest.main()

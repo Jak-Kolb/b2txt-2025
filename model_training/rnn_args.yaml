@@ -22,6 +22,14 @@ output_dir: trained_models/causal_la0 # the deliverable acoustic model — this 
 checkpoint_dir: trained_models/causal_la0/checkpoint # directory to save checkpoints during training
 init_from_checkpoint: false # whether to initialize the model from a checkpoint
 init_checkpoint_path: None # path to the checkpoint to initialize the model from, if any
+init_shared_from_checkpoint: null # weights-only init of all but the day layers (other sessions/participant); fresh optimizer
+init_shared_shrink: 1.0 # shared weights = shrink * pretrained + perturb * fresh init (shrink-and-perturb)
+init_shared_perturb: 0.0
+init_shared_day_layers: false # also load day layers of sessions with the same name (checkpoint must record 'sessions')
+distill: # frame-level distillation from a frozen teacher run on the same augmented input (off while teacher_checkpoint is null)
+  teacher_checkpoint: null # checkpoint dir with best_checkpoint + args.yaml; must share the student's session list
+  weight: 0.5 # loss = (1 - weight) * CTC + weight * KD (KD summed over each trial's frames, like the CTC loss)
+  temperature: 2.0
 save_best_checkpoint: true # whether to save the best checkpoint based on validation metrics
 save_all_val_steps: false # C24 was REJECTED on measurement (PLAN §6.0.1), so this is no longer earning its 31 GB
 save_final_model: false # whether to save the final model after training

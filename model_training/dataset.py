@@ -6,6 +6,27 @@ import numpy as np
 from torch.nn.utils.rnn import pad_sequence
 import math 
 
+def splice_trials(a_features, a_ids, a_bounds, b_features, b_ids, b_len, b_bounds, rng):
+    '''
+    Within-day phrase splicing (augmentation): the first words of trial A followed by the last words of trial B.
+
+    a_features / b_features: [T, C] neural features; a_ids / b_ids: phoneme labels (zero padded); b_len: B's label count
+    a_bounds / b_bounds:     [[cut_bin, n_labels_before_cut], ...] one entry per boundary between two words
+                             (data_prep/word_boundaries.py; a forced-alignment proxy, not measured word timing)
+    Returns (features, ids padded to len(a_ids), n_time_steps, seq_len), or None when the labels would not fit.
+    '''
+    cut_a, n_a = a_bounds[rng.integers(len(a_bounds))]
+    cut_b, n_b = b_bounds[rng.integers(len(b_bounds))]
+    seq_len = n_a + (b_len - n_b)
+    if seq_len > len(a_ids) or cut_a <= 0 or cut_b >= b_features.shape[0]:
+        return None
+    features = torch.cat([a_features[:cut_a], b_features[cut_b:]])
+    ids = torch.zeros_like(a_ids)
+    ids[:n_a] = a_ids[:n_a]
+    ids[n_a:seq_len] = b_ids[n_b:b_len]
+    return features, ids, features.shape[0], seq_len
+
+
 class BrainToTextDataset(Dataset):
     '''
     Dataset for brain-to-text data
@@ -22,7 +43,10 @@ class BrainToTextDataset(Dataset):
             days_per_batch = 1, 
             random_seed = -1,
             must_include_days = None,
-            feature_subset = None
+            feature_subset = None,
+            splice_prob = 0.0,
+            splice_boundaries = None,
+            sampling = 'days'
             ): 
         '''
         trial_indicies:  (dict)      - dictionary with day numbers as keys and lists of trial indices as values
@@ -34,6 +58,11 @@ class BrainToTextDataset(Dataset):
         random_seed:     (int)       - seed to set for randomly assigning trials to a batch. If set to -1, trial assignment will be random
         must_include_days ([int])    - list of days that must be included in every batch
         feature_subset  ([int])      - list of neural feature indicies that should be the only features included in the neural data 
+        splice_prob      (float)     - (train only) probability that a trial is spliced with another trial of the same day (splice_trials)
+        splice_boundaries (dict)     - {session name: {trial index (str): [[cut_bin, n_labels_before_cut], ...]}}
+        sampling         (string)    - (train only) 'days': days_per_batch random days per batch, equal trials per day, with
+                                       replacement (every day equally likely, so trials of small days are drawn more often).
+                                       'trials': shuffled passes over all trials, each trial once per pass (days_per_batch unused)
          '''
         
         # Set random seed for reproducibility
@@ -48,6 +77,9 @@ class BrainToTextDataset(Dataset):
             raise ValueError(f'split must be either "train" or "test". Received {self.split}')
         
         self.days_per_batch = days_per_batch
+        if sampling not in ['days', 'trials']:
+            raise ValueError(f'sampling must be "days" or "trials". Received {sampling}')
+        self.sampling = sampling
 
         self.batch_size = batch_size
 
@@ -59,6 +91,14 @@ class BrainToTextDataset(Dataset):
         self.n_days = len(trial_indicies.keys())
 
         self.feature_subset = feature_subset
+
+        self.splice_prob = splice_prob if split == 'train' else 0.0
+        self.splice_seed = random_seed
+        self.splice_bounds = {}
+        if self.splice_prob > 0:
+            for d in trial_indicies:
+                session = [s for s in trial_indicies[d]['session_path'].split('/') if s.startswith(('t15.20', 't12.20', 't15v.20'))][0]
+                self.splice_bounds[d] = {int(t): b for t, b in (splice_boundaries or {}).get(session, {}).items() if b}
 
         # Calculate total number of trials in the dataset
         for d in trial_indicies:
@@ -79,7 +119,7 @@ class BrainToTextDataset(Dataset):
         self.must_include_days = must_include_days    
 
         # Ensure that the days_per_batch is not greater than the number of days in the dataset. Raise error
-        if self.split == 'train' and self.days_per_batch > self.n_days:
+        if self.split == 'train' and self.sampling == 'days' and self.days_per_batch > self.n_days:
             raise ValueError(f'Requested days_per_batch: {days_per_batch} is greater than available days {self.n_days}.')
            
         
@@ -114,6 +154,9 @@ class BrainToTextDataset(Dataset):
 
         index = self.batch_index[idx]
 
+        # Per-batch generator: DataLoader workers are forked with the same global numpy state
+        rng = np.random.default_rng([abs(self.splice_seed), idx]) if self.splice_prob > 0 else None
+
         # Iterate through each day in the index
         for d in index.keys():
 
@@ -131,12 +174,30 @@ class BrainToTextDataset(Dataset):
                         if self.feature_subset:
                             input_features = input_features[:,self.feature_subset]
 
+                        seq_class_ids = torch.from_numpy(g['seq_class_ids'][:])
+                        n_time_steps, seq_len = g.attrs['n_time_steps'], g.attrs['seq_len']
+
+                        # Phrase splicing: this trial's first words + the last words of another trial of the same day
+                        bounds = self.splice_bounds.get(d, {}) if rng is not None else {}
+                        if int(t) in bounds and rng.random() < self.splice_prob:
+                            other = int(rng.choice(index[d])) if len(index[d]) > 1 else int(t)
+                            if other != int(t) and other in bounds:
+                                h = f[f'trial_{other:04d}']
+                                other_features = torch.from_numpy(h['input_features'][:])
+                                if self.feature_subset:
+                                    other_features = other_features[:,self.feature_subset]
+                                spliced = splice_trials(input_features, seq_class_ids, bounds[int(t)], other_features,
+                                                        torch.from_numpy(h['seq_class_ids'][:]), int(h.attrs['seq_len']),
+                                                        bounds[other], rng)
+                                if spliced is not None:
+                                    input_features, seq_class_ids, n_time_steps, seq_len = spliced
+
                         batch['input_features'].append(input_features)
 
-                        batch['seq_class_ids'].append(torch.from_numpy(g['seq_class_ids'][:]))  # phoneme labels
+                        batch['seq_class_ids'].append(seq_class_ids)  # phoneme labels
                         batch['transcriptions'].append(torch.from_numpy(g['transcription'][:])) # character level transcriptions
-                        batch['n_time_steps'].append(g.attrs['n_time_steps']) # number of time steps in the trial - required since we are padding
-                        batch['phone_seq_lens'].append(g.attrs['seq_len']) # number of phonemes in the label - required since we are padding
+                        batch['n_time_steps'].append(n_time_steps) # number of time steps in the trial - required since we are padding
+                        batch['phone_seq_lens'].append(seq_len) # number of phonemes in the label - required since we are padding
                         batch['day_indicies'].append(int(d)) # day index of each trial - required for the day specific layers 
                         batch['block_nums'].append(g.attrs['block_num'])
                         batch['trial_nums'].append(g.attrs['trial_num'])
@@ -168,6 +229,20 @@ class BrainToTextDataset(Dataset):
         '''
 
         batch_index = {}
+
+        if self.sampling == 'trials':
+            # Shuffled passes over every (day, trial); a pass's leftover trials start the next batch
+            pairs = [(d, t) for d in self.trial_indicies for t in self.trial_indicies[d]['trials']]
+            queue = []
+            for batch_idx in range(self.n_batches):
+                while len(queue) < self.batch_size:
+                    queue += [pairs[i] for i in np.random.permutation(len(pairs))]
+                batch = {}
+                for d, t in queue[:self.batch_size]:
+                    batch.setdefault(d, []).append(t)
+                queue = queue[self.batch_size:]
+                batch_index[batch_idx] = batch
+            return batch_index
 
         # Precompute the days that are not in must_include_days
         if self.must_include_days is not None:
@@ -269,7 +344,7 @@ def train_test_split_indicies(file_paths, test_percentage = 0.1, seed = -1, bad_
     # Get trials in each day
     trials_per_day = {}
     for i, path in enumerate(file_paths):
-        session = [s for s in path.split('/') if (s.startswith('t15.20') or s.startswith('t12.20'))][0]
+        session = [s for s in path.split('/') if s.startswith(('t15.20', 't12.20', 't15v.20'))][0]
 
         good_trial_indices = []
 

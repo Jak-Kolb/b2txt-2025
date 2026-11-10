@@ -103,15 +103,18 @@ def time_mask_per_trial(features, lengths, n_masks=20, max_frac=0.075):
     return features * (~masked).unsqueeze(-1).to(features.dtype), coverage
 
 
-def per_trial_time_spans(lengths, T, n_masks=20, max_frac=0.075):
+def per_trial_time_spans(lengths, T, n_masks=20, max_frac=0.075, max_len=None):
     """The span draw of time_mask_per_trial: a [B, T] bool mask (True = masked) and per-trial coverage.
 
     Also used on output frames for the Transformer variant, which replaces masked frame embeddings
-    with a learned token instead of zeroing input bins.
+    with a learned token instead of zeroing input bins. max_len (optional) caps each span's width at an
+    absolute count (LightBeam: up to 5 frames per mask).
     """
     B = lengths.shape[0]
     lengths = lengths.long().clamp(min=1, max=T)
     max_w = torch.floor(max_frac * lengths.float()).long()
+    if max_len is not None:
+        max_w = max_w.clamp(max=int(max_len))
     w = (torch.rand((B, n_masks), device=lengths.device) * (max_w + 1).unsqueeze(1).float()).long()
     start = (torch.rand((B, n_masks), device=lengths.device) * (lengths.unsqueeze(1) - w + 1).float()).long()
 

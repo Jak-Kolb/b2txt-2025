@@ -69,7 +69,8 @@ def score_sentences(model, tok, sentences, device, batch_size=256):
 
     for start in range(0, len(order), batch_size):
         idx = order[start:start + batch_size]
-        enc = [[bos] + tok.encode(" " + sentences[i].strip()) for i in idx]
+        # no automatic special tokens: OPT would prepend its own BOS (GPT-2 and Qwen add none, so they are unchanged)
+        enc = [[bos] + tok.encode(" " + sentences[i].strip(), add_special_tokens=False) for i in idx]
         width = max(len(e) for e in enc)
         ids = torch.full((len(enc), width), bos, dtype=torch.long)
         mask = torch.zeros((len(enc), width), dtype=torch.bool)

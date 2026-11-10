@@ -24,6 +24,70 @@ torch._dynamo.config.cache_size_limit = 64
 
 from model_factory import build_model
 
+
+def distill_loss(student_logits, teacher_logits, frame_lens, temperature):
+    '''
+    Frame-level KL(teacher || student) at a temperature, summed over each trial's valid frames (like the CTC loss,
+    a per-trial sum) and averaged over the batch; scaled by temperature^2 as usual for distillation.
+    '''
+    n = min(student_logits.shape[1], teacher_logits.shape[1])
+    valid = torch.arange(n, device = student_logits.device).unsqueeze(0) < frame_lens.unsqueeze(1)
+    kl = torch.nn.functional.kl_div((student_logits[:, :n].float() / temperature).log_softmax(-1),
+                                    (teacher_logits[:, :n].float() / temperature).log_softmax(-1),
+                                    log_target = True, reduction = 'none').sum(-1)
+    return (kl * valid).sum(1).mean() * temperature ** 2
+
+
+def frame_entropy(logits, frame_lens):
+    '''
+    Entropy of the per-frame output distribution, summed over each trial's valid frames (like the CTC loss, a
+    per-trial sum) and averaged over the batch. Subtracted from the loss with weight entropy_weight as a confidence
+    penalty (Pereyra et al. 2017). For a frame whose label is certain (CTC acting like cross-entropy there), the
+    optimal top probability with 41 classes is ~0.998 at weight 0.10, ~0.991 at 0.12, ~0.962 at 0.15, ~0.90 at 0.19.
+    '''
+    logp = logits.float().log_softmax(-1)
+    ent = -(logp.exp() * logp).sum(-1)
+    valid = torch.arange(logits.shape[1], device = logits.device).unsqueeze(0) < frame_lens.unsqueeze(1)
+    return (ent * valid).sum(1).mean()
+
+
+def frame_uniform_kl(logits, frame_lens):
+    '''
+    KL(uniform || p) of the per-frame output distribution, summed over each trial's valid frames and averaged over
+    the batch (same reduction as frame_entropy). Added to the loss with weight label_smoothing_weight: frame-level
+    label smoothing for CTC. Unlike the entropy penalty it grows without bound as any class's probability goes to
+    zero, so it keeps a floor under the alternatives. For a frame whose label is certain, the optimum with C classes
+    and weight w puts (w / C) / (1 + w) on every other class: top probability ~0.954 at w = 0.05 with 41 classes.
+    '''
+    logp = logits.float().log_softmax(-1)
+    kl = -logp.mean(-1) - math.log(logits.shape[-1])
+    valid = torch.arange(logits.shape[1], device = logits.device).unsqueeze(0) < frame_lens.unsqueeze(1)
+    return (kl * valid).sum(1).mean()
+
+
+def consistency_loss(logits, frame_lens):
+    '''CR-CTC consistency term (Yao et al. 2025, arXiv 2410.05101). logits [2B, T, C] holds two differently augmented
+    views of the same B trials (rows i and B + i). Per trial, the sum over valid frames of
+    0.5 * [KL(sg(b) || a) + KL(sg(a) || b)], each view pulled toward the other's stopped-gradient posterior. [B].'''
+    half = logits.shape[0] // 2
+    log_probs = logits.float().log_softmax(-1)
+    a, b = log_probs[:half], log_probs[half:]
+    ta, tb = a.detach(), b.detach()
+    kl = (tb.exp() * (tb - a)).sum(-1) + (ta.exp() * (ta - b)).sum(-1)
+    valid = torch.arange(logits.shape[1], device = logits.device).unsqueeze(0) < frame_lens[:half].unsqueeze(1)
+    return 0.5 * (kl * valid).sum(dim = 1)
+
+
+def diphone_targets(labels, n_classes):
+    '''
+    Diphone (preceding phoneme, phoneme) class per label, for the auxiliary diphone CTC head (DCoND-style left
+    context; no future input). labels: [B, L] phoneme ids 1 .. n_classes - 1, zero padded. The first label's context
+    is 0 (sentence start). Class = 1 + previous * (n_classes - 1) + (label - 1); 0 stays the CTC blank / padding.
+    '''
+    previous = torch.cat([torch.zeros_like(labels[:, :1]), labels[:, :-1]], dim = 1)
+    return torch.where(labels > 0, 1 + previous * (n_classes - 1) + (labels - 1), torch.zeros_like(labels))
+
+
 class BrainToTextDecoder_Trainer:
     """
     This class will initialize and train a brain-to-text phoneme decoder
@@ -128,6 +192,41 @@ class BrainToTextDecoder_Trainer:
 
         self.logger.info(self.model)
 
+        # Optional confidence penalty (frame_entropy) and intermediate-CTC weight (TransformerDecoder.inter_ctc_layer)
+        self.entropy_weight = self.args.get('entropy_weight', 0.0)
+        self.label_smoothing_weight = self.args.get('label_smoothing_weight', 0.0)
+        # cr_ctc_weight > 0: every training batch is run as two independently augmented copies (noise, masks,
+        # dropout), with a consistency term between them (see consistency_loss); doubles the per-batch cost.
+        self.cr_ctc_weight = self.args.get('cr_ctc_weight', 0.0)
+        # ctc_length_norm: divide each trial's CTC loss (and consistency term) by its target length before the
+        # batch mean (LightBeam's normalize_ctc_len); training loss only, validation loss is unchanged.
+        self.ctc_length_norm = self.args.get('ctc_length_norm', False)
+        self.inter_ctc_weight = (self.args['model'].get('transformer') or {}).get('inter_ctc_weight', 0.3)
+
+        # Optional auxiliary diphone CTC head on the features the output layer reads (training only; never saved)
+        self.diphone_weight = self.args.get('diphone_weight', 0.0)
+        self.diphone_head = None
+        if self.diphone_weight > 0:
+            if (self.args['model'].get('transformer') or {}).get('inter_ctc_layer', 0):
+                raise ValueError("diphone_weight and inter_ctc_layer cannot be combined")
+            n_classes = self.args['dataset']['n_classes']
+            self.diphone_head = torch.nn.Linear(self.model.out.in_features, 1 + n_classes * (n_classes - 1))
+            self.logger.info(f"Auxiliary diphone CTC head: {self.diphone_head.out_features} classes, weight {self.diphone_weight}")
+
+        # Optional frame-level distillation from a frozen teacher that sees the same augmented input (loaded after
+        # the student so the student's initialization is unchanged)
+        self.distill = self.args.get('distill') or {}
+        self.teacher = None
+        if self.distill.get('teacher_checkpoint'):
+            from benchmark.common import load_model
+            self.teacher, teacher_args, _ = load_model(self.distill['teacher_checkpoint'], self.device)
+            if list(teacher_args['dataset']['sessions']) != list(self.args['dataset']['sessions']):
+                raise ValueError("Teacher and student must share the session list (day-layer indices)")
+            for p in self.teacher.parameters():
+                p.requires_grad_(False)
+            self.logger.info(f"Distilling from {self.distill['teacher_checkpoint']}: weight {self.distill.get('weight', 0.5)}, "
+                             f"temperature {self.distill.get('temperature', 2.0)}")
+
         # Log how many parameters are in the model
         total_params = sum(p.numel() for p in self.model.parameters())
         self.logger.info(f"Model has {total_params:,} parameters")
@@ -164,6 +263,22 @@ class BrainToTextDecoder_Trainer:
             bad_trials_dict = None,
             )
 
+        # Optional fold hold-out: drop every n_folds-th training trial of each session (out-of-fold decodes of the
+        # training set need models that never saw the trials they decode)
+        fold = self.args['dataset'].get('train_fold')
+        if fold:
+            for d in train_trials:
+                train_trials[d]['trials'] = [t for t in train_trials[d]['trials'] if t % fold['n_folds'] != fold['holdout']]
+            self.logger.info(f"Holding out training fold {fold['holdout']} of {fold['n_folds']} (trial index modulo)")
+
+        # Optional phrase-splicing augmentation (dataset.splice_trials)
+        splice = self.args['dataset'].get('splice') or {}
+        splice_boundaries = None
+        if splice.get('prob', 0) > 0:
+            with open(splice['boundaries']) as f:
+                splice_boundaries = json.load(f)
+            self.logger.info(f"Phrase splicing: prob {splice['prob']}, boundaries {splice['boundaries']}")
+
         # Save dictionaries to output directory to know which trials were train vs val 
         with open(os.path.join(self.args['output_dir'], 'train_val_trials.json'), 'w') as f: 
             json.dump({'train' : train_trials, 'val': val_trials}, f)
@@ -183,7 +298,10 @@ class BrainToTextDecoder_Trainer:
             batch_size = self.args['dataset']['batch_size'],
             must_include_days = None,
             random_seed = self.args['dataset']['seed'],
-            feature_subset = feature_subset
+            feature_subset = feature_subset,
+            splice_prob = splice.get('prob', 0.0),
+            splice_boundaries = splice_boundaries,
+            sampling = self.args['dataset'].get('sampling', 'days')
             )
         self.train_loader = DataLoader(
             self.train_dataset,
@@ -226,6 +344,8 @@ class BrainToTextDecoder_Trainer:
             )
         elif self.args['lr_scheduler_type'] == 'cosine':
             self.learning_rate_scheduler = self.create_cosine_lr_scheduler(self.optimizer)
+        elif self.args['lr_scheduler_type'] == 'step':
+            self.learning_rate_scheduler = self.create_step_lr_scheduler(self.optimizer)
         
         else:
             raise ValueError(f"Invalid learning rate scheduler type: {self.args['lr_scheduler_type']}")
@@ -239,6 +359,10 @@ class BrainToTextDecoder_Trainer:
         if self.args['init_from_checkpoint']:
             self.load_model_checkpoint(self.args['init_checkpoint_path'])
 
+        # Weights-only transfer (e.g. T12 pretraining -> T15 fine-tuning): fresh optimizer, LR schedule and best PER
+        if self.args.get('init_shared_from_checkpoint'):
+            self.load_shared_weights(self.args['init_shared_from_checkpoint'])
+
         # Set rnn and/or input layers to not trainable if specified 
         for name, param in self.model.named_parameters():
             if not self.args['model']['rnn_trainable'] and 'gru' in name:
@@ -249,6 +373,8 @@ class BrainToTextDecoder_Trainer:
 
         # Send model to device 
         self.model.to(self.device)
+        if self.diphone_head is not None:
+            self.diphone_head.to(self.device)
 
     def create_optimizer(self):
         '''
@@ -258,9 +384,16 @@ class BrainToTextDecoder_Trainer:
 
         Day weights should have a separate learning rate
         '''
-        bias_params = [p for name, p in self.model.named_parameters() if 'gru.bias' in name or 'out.bias' in name]
+        # weight_decay_exclude_1d: also exempt every other 1-D parameter (LayerNorm gains, all biases), as is usual
+        # for Transformers; off by default so GRU optimizer groups are unchanged
+        exclude_1d = self.args.get('weight_decay_exclude_1d', False)
+        def no_decay(name, p):
+            return 'gru.bias' in name or 'out.bias' in name or (exclude_1d and p.dim() < 2)
+        bias_params = [p for name, p in self.model.named_parameters() if 'day_' not in name and no_decay(name, p)]
         day_params = [p for name, p in self.model.named_parameters() if 'day_' in name]
-        other_params = [p for name, p in self.model.named_parameters() if 'day_' not in name and 'gru.bias' not in name and 'out.bias' not in name]
+        other_params = [p for name, p in self.model.named_parameters() if 'day_' not in name and not no_decay(name, p)]
+        if self.diphone_head is not None:
+            other_params += list(self.diphone_head.parameters())
 
         if len(day_params) != 0:
             param_groups = [
@@ -284,6 +417,17 @@ class BrainToTextDecoder_Trainer:
         )
 
         return optim 
+
+    def create_step_lr_scheduler(self, optim):
+        '''Linear warmup over lr_warmup_steps, then the group's peak lr times lr_gamma for each of lr_milestones
+        passed (LightBeam's multistep schedule). Same factor for every param group.'''
+        warmup, gamma, milestones = self.args['lr_warmup_steps'], self.args['lr_gamma'], self.args['lr_milestones']
+
+        def factor(step):
+            if step < warmup:
+                return float(step) / float(max(1, warmup))
+            return gamma ** sum(step >= m for m in milestones)
+        return LambdaLR(optim, [factor] * len(optim.param_groups), -1)
 
     def create_cosine_lr_scheduler(self, optim):
         lr_max = self.args['lr_max']
@@ -377,6 +521,44 @@ class BrainToTextDecoder_Trainer:
                     state[k] = v.to(self.device)
 
         self.logger.info("Loaded model from checkpoint: " + load_path)
+
+    def load_shared_weights(self, load_path):
+        '''
+        Load every parameter except the day-specific input layers from a checkpoint trained on other sessions.
+        The day layers keep their fresh initialization; every other parameter must match in name and shape.
+        '''
+        checkpoint = torch.load(load_path, weights_only = False, map_location = 'cpu')
+        strip = lambda key: key[len('_orig_mod.'):] if key.startswith('_orig_mod.') else key
+        target = {strip(k): k for k in self.model.state_dict()}
+        shared = {strip(k): v for k, v in checkpoint['model_state_dict'].items() if not strip(k).startswith('day_')}
+        expected = {k for k in target if not k.startswith('day_')}
+        if set(shared) != expected:
+            raise ValueError(f"Shared parameters differ: missing {sorted(expected - set(shared))}, "
+                             f"unexpected {sorted(set(shared) - expected)}")
+        # Optional shrink-and-perturb (Ash & Adams 2020): mix the pretrained weights with this run's fresh init
+        shrink, perturb = self.args.get('init_shared_shrink', 1.0), self.args.get('init_shared_perturb', 0.0)
+        if shrink != 1.0 or perturb != 0.0:
+            fresh = self.model.state_dict()
+            shared = {k: shrink * v.to(fresh[target[k]].dtype) + perturb * fresh[target[k]].cpu() for k, v in shared.items()}
+        # Optionally carry day layers over to sessions present in both runs (matched by name, e.g. after pretraining
+        # on a pool that contains the fine-tuning sessions)
+        n_days = 0
+        if self.args.get('init_shared_day_layers', False):
+            source_sessions = list(checkpoint.get('sessions') or [])
+            if not source_sessions:
+                raise ValueError("init_shared_day_layers needs a checkpoint that records its 'sessions'")
+            source = {strip(k): v for k, v in checkpoint['model_state_dict'].items()}
+            for i, session in enumerate(self.args['dataset']['sessions']):
+                if session in source_sessions:
+                    j = source_sessions.index(session)
+                    shared[f'day_weights.{i}'] = source[f'day_weights.{j}']
+                    shared[f'day_biases.{i}'] = source[f'day_biases.{j}']
+                    n_days += 1
+        missing, unexpected = self.model.load_state_dict({target[k]: v for k, v in shared.items()}, strict = False)
+        if unexpected or any(not strip(k).startswith('day_') for k in missing):
+            raise ValueError(f"Partial load mismatch: missing {missing}, unexpected {unexpected}")
+        self.logger.info(f"Loaded {len(shared) - 2 * n_days} shared tensors and {n_days} matching day layers from: "
+                         f"{load_path} (shrink {shrink}, perturb {perturb})")
 
     def save_model_checkpoint(self, save_path, PER, loss, include_optimizer = True):
         '''
@@ -565,6 +747,11 @@ class BrainToTextDecoder_Trainer:
             n_time_steps = batch['n_time_steps'].to(self.device)
             phone_seq_lens = batch['phone_seq_lens'].to(self.device)
             day_indicies = batch['day_indicies'].to(self.device)
+            if self.cr_ctc_weight > 0:
+                features = features.repeat(2, 1, 1)
+                labels = labels.repeat(2, 1)
+                n_time_steps, phone_seq_lens, day_indicies = (
+                    n_time_steps.repeat(2), phone_seq_lens.repeat(2), day_indicies.repeat(2))
 
             # Use autocast for efficiency
             with torch.autocast(device_type = "cuda", enabled = self.args['use_amp'], dtype = torch.bfloat16):
@@ -580,19 +767,32 @@ class BrainToTextDecoder_Trainer:
                 n_trials_seen += labels.shape[0]
 
                 # Get phoneme predictions 
+                hidden = dict(return_hidden = True) if self.diphone_head is not None else {}
                 if self.transform_args.get('time_mask_n', 0) > 0 and self.transform_args.get('time_mask_mode') == 'per_trial_frames':
                     n_frames = (features.shape[1] - self.args['model']['patch_size']) // self.args['model']['patch_stride'] + 1
                     frame_mask, coverage = per_trial_time_spans(
                         adjusted_lens, n_frames,
                         n_masks  = self.transform_args['time_mask_n'],
                         max_frac = self.transform_args.get('time_mask_max_frac', 0.075),
+                        max_len  = self.transform_args.get('time_mask_max_len'),
                         )
                     self.mask_coverage.append(coverage.detach())
-                    logits = self.model(features, day_indicies, frame_mask = frame_mask)
+                    lens = dict(frame_lens = adjusted_lens) if getattr(self.model, 'uses_frame_lens', False) else {}
+                    logits = self.model(features, day_indicies, frame_mask = frame_mask, **lens, **hidden)
                 elif getattr(self.model, 'uses_frame_lens', False):
-                    logits = self.model(features, day_indicies, frame_lens = adjusted_lens)
+                    logits = self.model(features, day_indicies, frame_lens = adjusted_lens, **hidden)
                 else:
-                    logits = self.model(features, day_indicies)
+                    logits = self.model(features, day_indicies, **hidden)
+
+                # Diphone head: the model returned the output layer's input features
+                if self.diphone_head is not None:
+                    diphone_logits = self.diphone_head(logits)
+                    logits = self.model.out(logits)
+
+                # Intermediate CTC: training forwards then return (logits, intermediate logits)
+                inter_logits = None
+                if isinstance(logits, tuple):
+                    logits, inter_logits = logits
 
                 # Calculate CTC Loss
                 loss = self.ctc_loss(
@@ -601,14 +801,56 @@ class BrainToTextDecoder_Trainer:
                     input_lengths = adjusted_lens,
                     target_lengths = phone_seq_lens
                     )
-                    
+
+                if self.ctc_length_norm:
+                    loss = loss / phone_seq_lens.clamp(min = 1)
                 loss = torch.mean(loss) # take mean loss over batches
-            
+                ctc_main = loss
+
+                if self.cr_ctc_weight > 0:
+                    cr = consistency_loss(logits, adjusted_lens)
+                    if self.ctc_length_norm:
+                        cr = cr / phone_seq_lens[:cr.shape[0]].clamp(min = 1)
+                    cr = torch.mean(cr)
+                    loss = loss + self.cr_ctc_weight * cr
+
+                if inter_logits is not None:
+                    inter = torch.mean(self.ctc_loss(
+                        log_probs = torch.permute(inter_logits.log_softmax(2), [1, 0, 2]),
+                        targets = labels,
+                        input_lengths = adjusted_lens,
+                        target_lengths = phone_seq_lens
+                        ))
+                    loss = (1 - self.inter_ctc_weight) * loss + self.inter_ctc_weight * inter
+
+                if self.diphone_head is not None:
+                    diphone = torch.mean(self.ctc_loss(
+                        log_probs = torch.permute(diphone_logits.float().log_softmax(2), [1, 0, 2]),
+                        targets = diphone_targets(labels, self.args['dataset']['n_classes']),
+                        input_lengths = adjusted_lens,
+                        target_lengths = phone_seq_lens
+                        ))
+                    loss = loss + self.diphone_weight * diphone
+
+                if self.entropy_weight > 0:
+                    ent = frame_entropy(logits, adjusted_lens)
+                    loss = loss - self.entropy_weight * ent
+
+                if self.label_smoothing_weight > 0:
+                    lsm = frame_uniform_kl(logits, adjusted_lens)
+                    loss = loss + self.label_smoothing_weight * lsm
+
+                if self.teacher is not None:
+                    with torch.no_grad():
+                        teacher_logits = self.teacher(features, day_indicies)
+                    kd = distill_loss(logits, teacher_logits, adjusted_lens, self.distill.get('temperature', 2.0))
+                    loss = (1 - self.distill.get('weight', 0.5)) * loss + self.distill.get('weight', 0.5) * kd
+
             loss.backward()
 
             # Clip gradient
             if self.args['grad_norm_clip_value'] > 0: 
-                grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), 
+                grad_norm = torch.nn.utils.clip_grad_norm_(list(self.model.parameters()) + (list(self.diphone_head.parameters()) if self.diphone_head is not None else []), 
                                                max_norm = self.args['grad_norm_clip_value'],
                                                error_if_nonfinite = True,
                                                foreach = True
@@ -627,6 +869,17 @@ class BrainToTextDecoder_Trainer:
                         f'loss: {(loss.detach().item()):.2f} ' +
                         f'grad norm: {grad_norm:.2f} '
                         f'time: {train_step_duration:.3f}')
+                if self.teacher is not None:
+                    self.logger.info(f'Distillation loss (batch {i}): {kd.detach().item():.3f}')
+                if self.cr_ctc_weight > 0:
+                    self.logger.info(f'CTC (batch {i}): {ctc_main.detach().item():.3f} consistency: {cr.detach().item():.3f}')
+                if self.diphone_head is not None:
+                    self.logger.info(f'CTC (batch {i}): {ctc_main.detach().item():.3f} diphone CTC: {diphone.detach().item():.3f}')
+                if inter_logits is not None or self.entropy_weight > 0 or self.label_smoothing_weight > 0:
+                    self.logger.info(f'CTC (batch {i}): {ctc_main.detach().item():.3f}'
+                                     + (f' intermediate CTC: {inter.detach().item():.3f}' if inter_logits is not None else '')
+                                     + (f' frame entropy: {ent.detach().item():.2f}' if self.entropy_weight > 0 else '')
+                                     + (f' uniform KL: {lsm.detach().item():.2f}' if self.label_smoothing_weight > 0 else ''))
                 if self.mask_coverage:
                     coverage = torch.cat(self.mask_coverage).float().cpu()
                     self.logger.info(f'Time-mask coverage of valid time steps ({coverage.numel()} trials): mean {coverage.mean():.3f} '
@@ -841,10 +1094,15 @@ class BrainToTextDecoder_Trainer:
             metrics['trial_nums'].append(batch['trial_nums'].numpy())
             metrics['day_indicies'].append(batch['day_indicies'].cpu().numpy())
 
-        avg_PER = total_edit_distance / total_seq_length
-
         metrics['day_PERs'] = day_per
-        metrics['avg_PER'] = avg_PER.item()
-        metrics['avg_loss'] = np.mean(metrics['losses'])
+        if total_seq_length == 0:
+            # No enabled validation trials (e.g. pretraining only on sessions without data_val.hdf5,
+            # all dataset_probability_val = 0): NaN instead of a ZeroDivisionError. NaN never beats the
+            # best PER, so no best_checkpoint is written; such runs need save_final_model: true.
+            metrics['avg_PER'] = float('nan')
+            metrics['avg_loss'] = float('nan')
+        else:
+            metrics['avg_PER'] = (total_edit_distance / total_seq_length).item()
+            metrics['avg_loss'] = np.mean(metrics['losses'])
 
         return metrics

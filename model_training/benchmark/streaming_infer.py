@@ -126,17 +126,23 @@ class StreamingDecoder:
         self.n_emitted_frames = 0
         if hasattr(self.model, "stream_step"):
             # Non-recurrent models (e.g. TransformerDecoder) carry their own streaming state.
+            if getattr(self.model, "lookahead_frames", 0):
+                raise ValueError("Streaming is not implemented for the look-ahead Transformer yet")
             self.hidden = self.model.initial_state()
         else:
             if getattr(self.model, "bidirectional", False):
                 raise ValueError("A bidirectional GRU needs the whole trial and cannot stream")
-            if getattr(self.model, "lookahead_units", 0):
-                raise ValueError("Streaming is not implemented for the look-ahead module yet")
             self.hidden = self.model.h0.expand(
                 self.model.n_layers,
                 1,
                 self.model.n_units,
             ).contiguous()
+
+        # Look-ahead models: causal frames whose output still waits for R later frames, as (look-ahead input, causal
+        # output) pairs; the output for frame t is emitted once frame t+R arrives (or at finish, zero-padded as offline).
+        self.lookahead_frames = int(getattr(self.model, "lookahead_frames", 0)) if getattr(
+            self.model, "lookahead_units", 0) else None
+        self.lookahead_pending: deque = deque()
 
         self.logit_frames: List[torch.Tensor] = []
         self.collapsed_tokens: List[int] = []
@@ -179,6 +185,8 @@ class StreamingDecoder:
                     "Streaming smoother did not emit the same number of bins as offline "
                     f"({self.next_smooth_index} != {self.n_real_bins})"
                 )
+            while self.lookahead_pending:   # frames past the trial's end count as zeros, as offline
+                emitted.append(self._emit_lookahead())
 
         self.finish_compute_sec = self._elapsed(start)
         self.finished = True
@@ -235,19 +243,21 @@ class StreamingDecoder:
 
     def _consume_smoothed_bin(self, smoothed: torch.Tensor) -> List[torch.Tensor]:
         transformed = self.model.day_layer_activation(smoothed @ self.day_weight + self.day_bias)
+        if getattr(self.model, "input_bottleneck", 0):
+            transformed = self.model.input_compress(transformed)
 
         if self.patch_size <= 0:
-            return [self._step_gru(transformed.view(1, 1, -1))]
+            return self._step_gru(transformed.view(1, 1, -1))
 
         self.transformed_buffer.append(transformed.detach())
         self.n_transformed += 1
         emitted: List[torch.Tensor] = []
         while self.n_transformed >= self.next_patch_start + self.patch_size:
-            emitted.append(self._emit_patch())
+            emitted.extend(self._emit_patch())
             self.next_patch_start += self.patch_stride
         return emitted
 
-    def _emit_patch(self) -> torch.Tensor:
+    def _emit_patch(self) -> List[torch.Tensor]:
         # With overlapping patches the window that comes due is always the most recent
         # patch_size bins, which is exactly what the bounded buffer holds.
         if self.n_transformed != self.next_patch_start + self.patch_size:
@@ -261,13 +271,40 @@ class StreamingDecoder:
         self._record_elapsed(start, self.per_patch_compute_sec)
         return frame_logits
 
-    def _step_gru(self, gru_input: torch.Tensor) -> torch.Tensor:
+    def _step_gru(self, gru_input: torch.Tensor) -> List[torch.Tensor]:
+        """One causal step; returns the output frames that became ready (none while a look-ahead window fills)."""
         if hasattr(self.model, "stream_step"):
             logits, self.hidden = self.model.stream_step(gru_input, self.hidden)
         else:
             output, self.hidden = self.model.gru(gru_input, self.hidden)
+            if self.lookahead_frames is not None:
+                source = self.model.lookahead_input
+                raw = self.model.lookahead_proj(gru_input)[0, 0] if source != "hidden" else None
+                u = {"hidden": output[0, 0], "raw": raw}.get(source)
+                if u is None:
+                    u = torch.cat([output[0, 0], raw])
+                self.lookahead_pending.append((u, output[0, 0]))
+                if len(self.lookahead_pending) <= self.lookahead_frames:
+                    return []
+                return [self._emit_lookahead()]
             logits = self.model.out(output)
-        frame_logits = logits[0, 0].float()
+        return [self._record_frame(logits[0, 0])]
+
+    def _emit_lookahead(self) -> torch.Tensor:
+        """Output for the oldest pending frame t from frames t..t+R (zeros past the end), as GRUDecoder.forward."""
+        r = self.lookahead_frames
+        window = [u for u, _ in list(self.lookahead_pending)[: r + 1]]
+        _, h_t = self.lookahead_pending.popleft()
+        u = torch.stack(window + [torch.zeros_like(window[0])] * (r + 1 - len(window)))
+        if self.model.lookahead_mode == "palindrome":
+            start = torch.tanh(self.model.lookahead_init(h_t)).view(1, 1, -1)
+            out, _ = self.model.lookahead_gru(torch.cat([u, u.flip(0)]).unsqueeze(0), start)
+        else:
+            out, _ = self.model.lookahead_gru(u.flip(0).unsqueeze(0))
+        return self._record_frame(self.model.out(torch.cat([h_t, out[0, -1]])))
+
+    def _record_frame(self, frame_logits: torch.Tensor) -> torch.Tensor:
+        frame_logits = frame_logits.float()
         self.n_emitted_frames += 1
         if self.keep_logits:
             self.logit_frames.append(frame_logits.detach().clone())
