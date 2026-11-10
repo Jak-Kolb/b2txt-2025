@@ -4,6 +4,8 @@
 of below 6% (`current_knowledge.md` section 0, which also holds every result and the ledger of what was tried). The
 experiments below are prepared and not yet run. The research direction remains exploratory.
 
+Models are named as in `harness/registry/MODELS.md`, which also lists the letter IDs used here (A2, G2, X6).
+
 ## Objective and scope
 
 Build an efficient real-time speech-to-text pipeline on B2T '25 and the Makin
@@ -18,8 +20,8 @@ B2T implementation can proceed now. ECoG is an intended second development track
 with access, task, data format, alignment, and baseline still unknown.
 
 The September 2026 validity review limits particular claims and experiments; it does not
-freeze unrelated development. The August plan and the September milestones of this file
-are in `docs/history/`; the review itself and that folder's index are local files, not in git.
+freeze unrelated development. The August plan, the September milestones of this file
+and the review itself are in `docs/history/` (index: `docs/history/README.md`).
 `results/RESULTS.md` (local) is the source-linked record of the September measurements.
 
 ## Next experiments, prepared 2026-11-10 (none run yet)
@@ -48,8 +50,9 @@ fresh run paths. All results are val-dev and exploratory; one seed per arm.
    `diphone_weight`. Keep rule (in the script): best WER at least 0.3 below the matched 20k reference and word ends
    no more than 40 ms later; kept models go to the ranker as decider / ensemble member.
 4. **Non-CTC second scorer** (one training of roughly 1-2 h per decider, untimed; needs step 3's cut points).
-   `.venv/bin/python model_training/aed_scorer.py --encoder la1344_r2_s10_final --out model_training/trained_models/aed_la1344_r2_s10_$(date -u +%Y%m%dT%H%M%SZ)`
-   then, per deadline, `learning/live_eval/llm_live/aed_features.py features HEAD_DIR la1344_r2_s10_final 1` (and
+   `.venv/bin/python model_training/aed_scorer.py --encoder gru1344_head256_pall_f160_20k_s10 --out model_training/trained_models/aed_gru1344_head256_pall_f160_20k_s10_$(date -u +%Y%m%dT%H%M%SZ)`
+   then, per deadline, `learning/live_eval/llm_live/aed_features.py features HEAD_DIR la1344_r2_s10_final 1` (G2
+   under its old name, which the cached files in `learning/` are keyed by; and
    `13`), then `aed_features.py rank OUT_JSON 1`. The `rank` path has not been exercised end to end. The encoder
    saw the training trials, so the head may over-trust it; step 5's fold models remove that.
 5. **Candidate-aware fine-tuned LLM** (about 1-1.5 weeks; only the first piece exists). Give it the live partial
@@ -85,11 +88,11 @@ CPU under `torch.compile`; no GPU run yet.
 - **T1-T3. Three trainings of about 100 min each, then decoding:**
   `nohup .venv/bin/python results/harness/queue/tfm_lbfix_20261111.py > results/harness/queue/tfm_lbfix_20261111_run.log 2>&1 &`
   (arm names as arguments to run a subset).
-  - A `tfm_lb2_exact_63k_s10`: their recipe as closely as this trainer allows (centred smoothing, no attention
-    look-ahead). The reproduction control. Reproduced if its best 4-gram WER is 7.0 or below (0.81 x causal_la0's
+  - A `tfm384x5_lb_p20000_f80_sm80_noday_v2_63k_s10`: their recipe as closely as this trainer allows (centred smoothing, no attention
+    look-ahead). The reproduction control. Reproduced if its best 4-gram WER is 7.0 or below (0.81 x A2's
     8.51) with the best acoustic scale at 0.3 or above; if it is 8.5 or above, run their code unmodified next.
-  - B `tfm_lb2_r2_63k_s10`: the same with causal smoothing and R = 2; plugs into the live pipeline as is.
-  - C `tfm_lb2_cr_r2_32k_s10`: B + CR-CTC on half the batches.
+  - B `tfm384x5_lb_p20000_f160_noday_v2_63k_s10`: the same with causal smoothing and R = 2; plugs into the live pipeline as is.
+  - C `tfm384x5_lb_p20000_f160_noday_v2_crctc_32k_s10`: B + CR-CTC on half the batches.
   Read-out and keep rule are in the script (best-temperature CTC loss, best acoustic scale, best WER; reference 0.442 /
   0.2 / 9.15; GRU 7.77). PER is not the criterion. The fixes are bundled, so a gain is not attributed to any one. One
   seed per arm; their seeds spread 4.5-6.0%.

@@ -1,27 +1,72 @@
-> ### This fork: efficient streaming neural speech-to-text
->
-> Build and measure a real-time decoding pipeline on B2T '25 intracortical data
-> and the Makin lab's ECoG dataset, using appropriate frontends and a shared
-> evaluation framework. B2T is available; lab access and integration remain pending.
-> Temporal context, neural models, LM search, word commitment, and runtime choices
-> are exploratory questions within this development.
->
-> **Status (2026-09-28): a pipeline harness benchmarks, compares, and replays decoders.**
-> [Paced released-feature replay and timestamped output tracing](model_training/benchmark/README.md)
-> connect streaming acoustic models to the native n-gram decoder across two environments.
-> The [harness](harness/README.md) adds full val-dev benchmarks with a streaming timing check,
-> paired comparisons, decode sweeps, word-commitment and error-source analyses, n-best
-> rescoring, retraining (GRU or causal Transformer), and a live browser player.
-> Val-dev results are exploratory: checkpoints and decode settings were selected on it.
-> Word latency remains unmeasured (no word alignments); rescoring is utterance-final.
-> The former holdout influenced checkpoint selection; raw-feature causality and
-> independent evaluation remain unresolved for the corresponding scientific claims.
->
-> - [Current plan](brainstorm/PLAN.md): milestones, open decisions, and first coding task.
-> Detailed measurements are kept locally in `results/RESULTS.md` alongside run
-> artifacts. Machine setup and agent notes are local-only.
->
-> The upstream paper README follows unchanged.
+# Real-time speech decoding from intracortical recordings
+
+This repository builds on the [Brain-to-Text '25 baseline](https://github.com/Neuroprosthetics-Lab/nejm-brain-to-text)
+(Card et al., *NEJM* 2024) and keeps its history. The baseline decodes a whole sentence after it ends. The work here
+turns it into a streaming pipeline and measures what accuracy costs in delay. The baseline's README follows below,
+unchanged.
+
+**Goal:** below 6% word error rate on *live words*. A live word is final once it is shown on screen, and it must be
+shown within 200 ms, 500 ms or 1.5 s of the moment the participant finished attempting it. Whole-sentence
+(bidirectional) acoustic models are excluded, and rescoring after the sentence ends does not count.
+
+## Status (2026-11-10)
+
+| Budget after the word ends | Live word error rate |
+|---|---|
+| 200 ms | 8.81% |
+| 500 ms | 8.26% |
+| 1.5 s | 8.01% |
+
+These are on the project's validation partition of the public B2T '25 data ("val-dev": 1,253 trials, 8,277 words,
+35 sessions, one participant). Read them as exploratory:
+
+- Models and settings were chosen on this same partition, so the numbers are optimistic. There is no independent
+  holdout, and the competition's test labels are not public.
+- Word-end times come from a forced alignment, not from measured speech.
+- Most comparisons are single training runs.
+
+For reference, waiting for the whole sentence gives 7.5-8.5% with the 4-gram decoder and 5.8-6.5% with neural
+rescoring of the finished sentence. A second track on the Makin lab's ECoG dataset is intended; access and
+integration are pending.
+
+## What this repository adds
+
+- **Streaming acoustic models** (`model_training/`): causal GRUs with a bounded look-ahead of 80 ms to 1.9 s, and
+  causal Transformers with a per-layer cache for streaming. 74 training runs are registered.
+- **A pipeline harness** (`harness/`, [README](harness/README.md)): full validation benchmarks with a streaming
+  timing check, paired comparisons, decode sweeps, word-commitment analyses, n-best rescoring, retraining with a
+  smoke test, and a live browser player that replays a trial and speaks each word as it is committed.
+- **Live-word evaluation** (`learning/live_eval/clock_a.py`): when each displayed word becomes final, measured
+  from an estimated word end.
+- **Language-model tooling**: a build path for 4-gram decoding graphs (`language_model/build_tlg.sh`), incremental
+  decoding of partial output (`model_training/benchmark/stream_lm.py`) and n-best neural rescoring
+  (`harness/rescore.py`).
+- **Converters for other public datasets** (`data_prep/`, [README](data_prep/README.md)), with the exclusion lists
+  that keep validation sentences out of training.
+
+## Where to look
+
+| For | Go to |
+|---|---|
+| How models are named, and every trained model with its letter ID | [`harness/registry/MODELS.md`](harness/registry/MODELS.md) |
+| Harness commands: bench, compare, sweep, train, live player | [`harness/README.md`](harness/README.md) |
+| What is being worked on next | [`brainstorm/PLAN.md`](brainstorm/PLAN.md) |
+| Paced replay and output tracing | [`model_training/benchmark/README.md`](model_training/benchmark/README.md) |
+| Earlier plans, reviews and logs | [`docs/history/`](docs/history/README.md) |
+
+## Running it
+
+Data and environments are set up as in the baseline README below. The commands here use a Python 3.10 virtual
+environment at `.venv` that holds the acoustic stack (the packages `setup.sh` installs; PyTorch 2.13 was used). With
+the baseline's conda environment, replace `.venv/bin/python` with `python`. The n-gram decoder runs in the separate
+`b2txt25_lm` environment from `setup_lm.sh`; the two environments exchange files only.
+
+    .venv/bin/python -m unittest discover -s tests     # synthetic data and tiny CPU models; no GPU or dataset needed
+    .venv/bin/python -m harness bench la0_gen4g        # standard benchmark of the reference pipeline
+
+Not in the repository: the dataset (public, on Dryad), trained checkpoints, run outputs, and working notes. The
+registry files under `harness/registry/` point at checkpoint folders that exist only on the development machine.
+
 ---
 
 # An Accurate and Rapidly Calibrating Speech Neuroprosthesis
