@@ -1,9 +1,8 @@
-# Streaming neural decoding plan — updated 2026-09-22
+# Streaming neural decoding plan — updated 2026-11-10
 
-**Paced released-feature → GRU → native LM replay is implemented on JakPC.
-A two-trial development smoke completed on September 19; artifacts and final
-synthetic tests were verified September 22. This validates integration, not
-general accuracy or speech-to-word latency. The research direction remains exploratory.**
+**Where things stand:** live-word WER is 8.81 / 8.26 / 8.01% at 200 ms / 500 ms / 1.5 s on val-dev against a target
+of below 6% (`current_knowledge.md` section 0, which also holds every result and the ledger of what was tried). The
+experiments below are prepared and not yet run. The research direction remains exploratory.
 
 ## Objective and scope
 
@@ -18,126 +17,124 @@ evaluation conventions where meaningful; report each dataset separately.
 B2T implementation can proceed now. ECoG is an intended second development track,
 with access, task, data format, alignment, and baseline still unknown.
 
-The [September review](../RESEARCH_ASSESSMENT.md) limits particular claims and
-experiments; it does not freeze unrelated development. Original decisions and
-gates remain in the [August record](../docs/history/PLAN_2026-08.md).
-[Results summary (local)](../results/RESULTS.md) remains the source-linked observation summary.
+The September 2026 validity review limits particular claims and experiments; it does not
+freeze unrelated development. The August plan and the September milestones of this file
+are in `docs/history/`; the review itself and that folder's index are local files, not in git.
+`results/RESULTS.md` (local) is the source-linked record of the September measurements.
 
-## Development milestones
+## Next experiments, prepared 2026-11-10 (none run yet)
 
-1. **Capture decoder output — implemented, 2026-09-19.**
-   The cached-logit decoder now saves timestamped provisional/final tokens, original
-   cache/session indices, configuration and source/cache hashes. Completed JSONL
-   traces can be replayed into revision summaries. Token edits are separate from
-   display-position changes; retractions and reappearances are retained.
-   Synthetic tests cover timing order, empty outputs, finalization, reference
-   independence, trace completeness, and existing-output protection in both Python
-   environments. The legacy acoustic check runs only in its Python 3.10 stack.
-   See [benchmark usage](../model_training/benchmark/README.md).
-   This is unpaced decoder-stage instrumentation: input-feature availability is
-   unknown, dataset endpoints are provided, and no commitment policy runs.
+Target: live-word WER below 6% (`current_knowledge.md` section 0; now 8.81 / 8.26 / 8.01 at 200 ms / 500 ms / 1.5 s).
+The ranker is saturated on its current inputs (more LLMs, data and capacity add nothing), so each step adds new
+evidence. Code is in place and smoke-checked on CPU; GPU smokes happen at launch (`harness train` smokes 50 batches
+before the real run). Rules as always: one GPU process at a time, no 8.5 GB decoder alongside GPU jobs, nice 19,
+fresh run paths. All results are val-dev and exploratory; one seed per arm.
 
-2. **Integrated replay implemented; bounded native validation complete.**
-   Connect paced feature input, existing preprocessing/GRU, incremental decoding,
-   and output events across the existing acoustic and LM environments. Include
-   queueing and synchronization; label cached-component measurements separately.
-   Record first output, provisional/committed/final accuracy, revisions,
-   processing lag, endpoint behavior, deadline misses, memory, and throughput.
-   Treat dataset-provided trial boundaries as an oracle condition unless an
-   online endpoint detector actually produces them.
-   The synchronous two-process baseline passed streamed/offline logit and final
-   native-text checks on two development trials (one session, 409 frame updates).
-   See results/paced_replay_smoke_20260919_02/ and results/RESULTS.md. Input is paced at
-   20 ms/bin; clocks include queueing, CUDA completion, IPC, and native decoding.
-   Dataset endpoints remain oracle and no online commitment policy is implemented.
-   Broader session coverage and statistical baseline characterization remain open.
+1. **Pool candidate lists across deciders** (CPU, under an hour). Other deciders' saved lists and partials vote on
+   each option and add options the deciding model lacks.
+   `nice -n 19 .venv/bin/python learning/live_eval/llm_live/ranker_pool.py learning/live_eval/out/llm_live/ranker_pool.json > learning/live_eval/out/llm_live/ranker_pool.log 2>&1`
+   Read: WER per decider for "own lists" / "+ member votes" / "+ member-only options", and "reference offered:
+   own / pooled". The members' decoders are assumed to run concurrently; their compute is not in the commit time.
+   If the gain is under 0.3, candidates are not the limit: go to step 3.
+2. **Budget curve at 2, 3 and 4 s** (CPU decoding then GPU scoring, about 12 h; not alongside training).
+   `nohup .venv/bin/python results/harness/queue/late_deadlines_20261109.py > results/harness/queue/late_deadlines_20261109_run.log 2>&1 &`
+   Result in `learning/live_eval/out/llm_live/ranker_lists_late.{json,log}`. Late deadlines often clip to the
+   trial end (oracle endpointing): report that share with the numbers.
+3. **Phrase splicing and diphone targets** (4 trainings of 2-4 h, then decoding).
+   First the cut points for every training trial (a few minutes of GPU):
+   `.venv/bin/python data_prep/word_boundaries.py`
+   then `nohup .venv/bin/python results/harness/queue/acoustic_aug_20261110.py > results/harness/queue/acoustic_aug_20261110_run.log 2>&1 &`
+   (arm names as arguments to run a subset). Config keys: `dataset.splice.prob`, `dataset.splice.boundaries`,
+   `diphone_weight`. Keep rule (in the script): best WER at least 0.3 below the matched 20k reference and word ends
+   no more than 40 ms later; kept models go to the ranker as decider / ensemble member.
+4. **Non-CTC second scorer** (one training of roughly 1-2 h per decider, untimed; needs step 3's cut points).
+   `.venv/bin/python model_training/aed_scorer.py --encoder la1344_r2_s10_final --out model_training/trained_models/aed_la1344_r2_s10_$(date -u +%Y%m%dT%H%M%SZ)`
+   then, per deadline, `learning/live_eval/llm_live/aed_features.py features HEAD_DIR la1344_r2_s10_final 1` (and
+   `13`), then `aed_features.py rank OUT_JSON 1`. The `rank` path has not been exercised end to end. The encoder
+   saw the training trials, so the head may over-trust it; step 5's fold models remove that.
+5. **Candidate-aware fine-tuned LLM** (about 1-1.5 weeks; only the first piece exists). Give it the live partial
+   hypotheses of several deciders as well as the candidates (see "What the 2026-11-10 literature check changes").
+   Ready: `dataset.train_fold.n_folds=5` / `dataset.train_fold.holdout=K` trains without every fifth training trial.
+   Still to build: a harness scope that decodes held-out training trials; deadline lists on them
+   (`llm_live/run.py` pattern); the selector fine-tune (prefix + candidates + phonemes -> next word). `peft` is not
+   installed and `bitsandbytes` cannot find its CUDA library, so 4-bit loading does not work today; OPT-2.7B in fp16
+   fits 16 GB without it. Environment changes need approval.
 
-   **Harness — implemented 2026-09-23 (harness/README.md).** One registry of acoustic
-   models, LM graphs, and pipeline presets; a standard benchmark (full val-dev accuracy with
-   frame-stepped LM partials, plus an unpaced streaming timing check with structural delay,
-   service times, and queue-simulated lag); occasional 1x paced runs that calibrate the
-   simulation; a local viewer (leaderboard, paired compare, trial replay); a live player on
-   the paced replay path; and a `train` command that forks, smoke-tests, launches, registers,
-   and benchmarks a retrained model. It uses the development partition only and keeps
-   exposure, oracle-endpoint, and simulated-versus-measured labels on every number.
+### Transformer fixes, prepared 2026-11-10 (none run yet)
 
-3. **Establish and integrate the lab ECoG track.**
-   With the user/lab, identify authorized storage/access, participants and sessions,
-   attempted/spoken task, sampling/features, labels/alignment, split constraints,
-   and the lab's existing decoder. Reuse its appropriate frontend/baseline.
-   Implement the smallest adapter supported by the real schema; do not build
-   speculative loaders or assume B2T phoneme vocabulary/checkpoints will transfer.
-   Completion: equivalent trace/metric reporting for an authorized ECoG baseline,
-   with dataset-specific limitations explicit. This track can advance alongside B2T.
+The 2026-11-03 "faithful" LightBeam run was not faithful (`current_knowledge.md` 4.8, "Reproduction gaps"). Their own
+repository reports, on full validation with their decoder, causal Transformer 5.09% vs baseline GRU 6.2-6.4% (10
+seeds each), so a faithful run should land near 0.81 of our baseline GRU. Fixes are coded, unit-tested and checked on
+CPU under `torch.compile`; no GPU run yet.
 
-4. **Explore focused changes against the baseline.**
-   Prioritize from measured bottlenecks and early traces, not guessed gains.
-   Change one lever at a time initially; test interactions only when warranted.
-   Candidate questions:
-   - Temporal context: what does future context or chunk size buy in WER and delay?
-   - Neural model: when do size, initialization/pretraining, or small ensembles
-     justify their compute? Begin with the existing GRU.
-   - LM search: how do beam size, LM choice, and rescoring schedule affect accuracy,
-     memory, and deadline success?
-   - Word commitment: how much waiting reduces revisions, and at what accuracy cost?
-   - Runtime: where do caching, batching, precision, or CPU/GPU scheduling matter?
-   Save configurations, paired comparisons, and negative results. A candidate is
-   useful if it explains a tradeoff; improvement is not required. Compare modern
-   relevant work such as LightBeam before claiming a novel decoding method.
+| Fix | Config key | Was |
+|---|---|---|
+| Masks up to 5% of the trial's frames (about 40% of a median trial masked) | `time_mask_max_frac=0.05`, no `time_mask_max_len` | up to 5 frames (22%) |
+| Left context drawn per batch from 5-20 s in training | `model.transformer.window_min=63` | fixed 20 s |
+| Learned relative position bias | `model.transformer.pos_bias=relative` | ALiBi |
+| CTC loss divided by target length | `ctc_length_norm=true` | per-trial sum |
+| No random cut | `dataset.data_transforms.random_cut=0` | 3 |
+| Batches are shuffled passes over all trials | `dataset.sampling=trials` | 4 random days per batch (small days drawn up to 3x as often) |
+| Dropout 0.2 on frame embeddings only; dropout inside the feed-forward | `model.input_network.input_layer_dropout=0`, `model.transformer.embed_dropout=0.2`, `model.transformer.ffn_dropout=true` | 0.2 on raw bins + 0.35 on embeddings; none in the feed-forward |
+| PyTorch default initialization | `model.transformer.init=torch` | Xavier-uniform, zero biases |
+| Centred smoothing, 80 ms of future input (arm A only) | `dataset.data_transforms.smooth_lookahead=4` | causal |
+| Consistency-regularized CTC (arm C only) | `cr_ctc_weight=0.2` | - |
 
-5. **Choose the paper question with the lab, then confirm it.**
-   Review the measured tradeoffs across available datasets and select a supported,
-   useful contribution. Freeze the selected pipeline and evaluation protocol before
-   independent evaluation. If independent data are unavailable, present a disclosed
-   retrospective exploratory study and limit generalization claims.
-   Keep final figures reproducible from saved events and result artifacts.
+- **T0. Rescore the existing model** (minutes of GPU, no training): how much of the gap is the decoder?
+  `.venv/bin/python -m harness rescore 20261104T002238Z_tfm_lb_r2_63k_s10_avg+gen4g-acoustic_scale-0.2_sweep`
+- **T1-T3. Three trainings of about 100 min each, then decoding:**
+  `nohup .venv/bin/python results/harness/queue/tfm_lbfix_20261111.py > results/harness/queue/tfm_lbfix_20261111_run.log 2>&1 &`
+  (arm names as arguments to run a subset).
+  - A `tfm_lb2_exact_63k_s10`: their recipe as closely as this trainer allows (centred smoothing, no attention
+    look-ahead). The reproduction control. Reproduced if its best 4-gram WER is 7.0 or below (0.81 x causal_la0's
+    8.51) with the best acoustic scale at 0.3 or above; if it is 8.5 or above, run their code unmodified next.
+  - B `tfm_lb2_r2_63k_s10`: the same with causal smoothing and R = 2; plugs into the live pipeline as is.
+  - C `tfm_lb2_cr_r2_32k_s10`: B + CR-CTC on half the batches.
+  Read-out and keep rule are in the script (best-temperature CTC loss, best acoustic scale, best WER; reference 0.442 /
+  0.2 / 9.15; GRU 7.77). PER is not the criterion. The fixes are bundled, so a gain is not attributed to any one. One
+  seed per arm; their seeds spread 4.5-6.0%.
+- Arm A cannot join the deadline ranker until `ctc_features.lookahead` counts smoothing look-ahead (it asserts none).
+- Suggested order for the first day: step 1 (CPU, under an hour), T0, arms A and B, then C or step 3's queue overnight.
 
-## Measurement decisions to settle during baseline work
+### What the 2026-11-10 literature check changes
 
-The proposed 200 ms / 500 ms / 1.5 s conditions need an explicit input event, output
-event, and failure rule. Measure feature-availability-to-output processing lag
-separately from neural/speech-event-to-word delay. Public B2T word alignments are
-not available here; inferred alignments are proxies, not ground truth. Report the
-proxy and uncertainty if used. Raw acquisition/feature extraction remain outside
-the replay boundary unless actually included.
+- **Step 5 is the largest published lever, and it should read several models.** Merging the decoded sentences of
+  10-29 models with a fine-tuned LLM cuts sentence-end WER by 29-57% (DCoND-LIFT 8.09 -> 5.77; BIT 4.06 -> 1.76; RNN
+  6.67 -> 3.09; Stanford deep ensembles, T15: -35%); the same merge without fine-tuning gives 6-10%. Every result is
+  sentence-end; none is for words committed at a deadline. Here, plain word voting over the saved sentence-end
+  outputs of 14 GRUs gives 7.67 -> 7.00, and 6.69 with three Transformers added
+  (`learning/per_eval/sentence_vote.py`), in line with the untrained numbers. So build the step-5 selector to read
+  the live partial hypotheses of several deciders, not one decider's 50-best.
+- **Different architectures are worth more as members than more seeds**: three Transformers, each worse than every
+  GRU, added more to the vote than going from 5 to 14 GRUs. Transformer arms that miss the GRU's WER are still
+  candidates for members.
+- **Untested and cheap:** members made from one model with test-time input noise (Stanford: -17% on T15 at sentence
+  end, against -35% for ten separately trained models); a less heavily pruned first-pass n-gram (ours is a 4-gram
+  pruned at 1e-8; the literature's 5-gram needs ~300 GB).
+- **Not available to us:** multi-user training (Fogg et al.: -30% on this dataset) needs five other participants'
+  unreleased data; no pretrained weights are published.
 
-The unconstrained configuration is an offline reference, not a guaranteed accuracy
-ceiling. Preserve the old 140 ms criterion in historical results. Report empirical
-deadline misses and timing coverage; observed maxima do not establish hard bounds.
+## Open tracks and standing constraints
 
-## Issues with specific dependencies
+- **Lab ECoG track (not started).** With the user and lab, establish authorized storage and access, participants
+  and sessions, task, sampling and features, labels and alignment, split constraints, and the lab's existing
+  decoder. Implement the smallest adapter the real schema supports; do not build speculative loaders or assume the
+  B2T phoneme vocabulary or checkpoints transfer. This blocks ECoG integration only, not B2T work. No collaborator
+  messages, data transfers or downloads follow automatically.
+- **Paper question (open).** Choose it with the lab from the measured tradeoffs, then freeze the pipeline and
+  protocol before any independent evaluation. Without independent data, present a disclosed retrospective
+  exploratory study and limit generalization claims.
+- **Evaluation.** Val-dev has been used for selection and tuning; former val-test took part in checkpoint selection.
+  Neither is an independent holdout, and no replacement split is created silently. Define selection data and
+  independent evaluation before any confirmatory comparison.
+- **Uncertainty.** Match conditions and use paired seeds when measuring training effects; report session
+  uncertainty separately from seed variation. A single-replicate difference is not an equivalence margin.
+- **Timing.** Trial ends are the dataset's (oracle endpoints). Word-end times are alignment proxies, not ground
+  truth. Raw acquisition and feature extraction are outside the replay boundary. Report deadline misses and timing
+  coverage; observed maxima are not hard bounds.
+- **Normalization experiment (dormant).** Resolve preprocessing, clipping and reset provenance and amend the
+  proposed variance floor (R-D2 / R-D3) before that treatment; see `.claude/rules/acoustic-pipeline.md`.
 
-- **Normalization experiment:** resolve preprocessing/clipping/reset provenance
-  and amend R-D2/R-D3 before that treatment. Test future perturbation, scaling,
-  constant/sparse channels, clipping, resets, and offline/online equivalence.
-  If raw equivalence cannot be justified, limit claims to released-feature replay.
-- **Evaluation:** former val-test participated in checkpoint selection. Existing
-  artifacts can inform exploration with disclosure. New use of that partition
-  needs an explicit revised scope; no silently created holdout. Define selection
-  data and independent evaluation before confirmatory comparisons.
-- **Uncertainty:** match conditions and use paired seeds when measuring training
-  effects; report session/participant uncertainty separately from seed variation.
-  Old single-replicate differences are not equivalence margins.
-- **Lab track:** metadata/access questions block its data integration, not B2T work.
-  No collaborator messages, data transfers, or downloads follow automatically.
-
-**Commitment baseline — first pass 2026-09-28** (`python -m harness commit RUN`; run page section): online
-stable-k and lag-n policies replayed on recorded partials of the full val-dev la0 run, with metrics defined
-before running. Lag-2/3 cost at most about 0.2 WER points but wait 4-5 s; stable-k is costly. Next: policies
-that use more than word count (e.g. LM score margins or acoustic posteriors), which need decoder outputs
-beyond the recorded best path, and a defensible delay reference.
-
-**Causal Transformer — first full run 2026-09-28** (`harness train`; model.type=transformer). One 8 x 512
-configuration trained on la0's schedule is worse than the GRU in PER and WER, including after decode tuning
-and rescoring (results/RESULTS.md section 6). Further architecture work needs a specific question first.
-Next (2026-09-29, at most one overnight run per day): the published time-masking treatment, first on the
-Transformer (learned mask token; scheduled), then the GRU (zeroed bins), each against its unmasked run with the
-same seed. Late weights-only snapshots are saved for decoded-WER checkpoint selection; its selection data is
-still to be decided.
-
-**Next development milestone:** design a bounded, session-spanning development
-baseline and an online word-commitment comparison. Define commitment/revision
-metrics before running the comparison; retain the existing no-commitment baseline
-and oracle endpoint condition. Choose timing proxies explicitly if word alignment
-remains unavailable. The two-trial smoke is too small to select a method or support
-a paper result. Lab access/schema and independent evaluation still need resolution.
+The September milestones (output capture, paced replay, the harness, the first commitment baseline and the first
+causal Transformer) are complete; their text is in `docs/history/PLAN_2026-09.md` and their results in
+`results/RESULTS.md` sections 1 and 4-6.

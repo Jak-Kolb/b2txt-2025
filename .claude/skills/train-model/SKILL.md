@@ -29,5 +29,9 @@ checkpoint-selection rule, PER, runtime/resources, and authorized WER evaluation
 Keep artifacts immutable. Report uncertainty and negative results; old single-run
 thresholds do not establish statistical equivalence.
 
+Launch through `.venv/bin/python -m harness train` (harness/README.md); it smokes, trains,
+registers and can benchmark the model. Multi-run queues follow results/harness/queue/.
+Run one GPU process at a time, and no WFST decoding beside a GPU job (AGENTS.md).
+
 Historical recipes in docs/history/PLAN_2026-08.md are evidence, not current launch
-instructions. The documentation-preparation task does not authorize training.
+instructions.

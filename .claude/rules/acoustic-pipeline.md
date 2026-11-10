@@ -25,3 +25,9 @@ Read root AGENTS.md and brainstorm/PLAN.md first.
 - Check CTC feasibility and finite loss. Do not change zero_infinity or suppress
   failing samples incidentally. Keep saved configs and completed runs.
 - Synchronize actual CUDA timing; training launch timing is not throughput.
+- The trainer always runs under torch.compile, which gave wrong gradients for the
+  per-session input layer until 2026-10-26 (overlapping unfold; fixed by patch_frames).
+  After changing how inputs are windowed or indexed, check compiled gradients against
+  eager on CPU (tests/test_transformer_model.py, test_compiled_gradients_match_eager).
+- New options default to off and keep existing parameter names, so saved configs and
+  registered checkpoints still load.
