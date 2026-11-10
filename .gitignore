@@ -56,10 +56,16 @@ language_model/generated_lm/
 
 CLAUDE.md
 AGENTS.md
-DEVELOPMENT_READY.md
-RESEARCH_ASSESSMENT.md
 RESULTS.md
 presentations/*
+
+# ---- internal notes ----
+current_knowledge.md
+TORCH_COMPILE_BUG.md
+transformer_tests_explanation.md
+# Archive of superseded documents. New files here stay local; the files
+# already committed in this folder remain tracked.
+docs/history/
 # Personal explainer scripts and figures
 learning/
 
