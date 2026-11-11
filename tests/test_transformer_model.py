@@ -212,7 +212,10 @@ class TransformerTests(unittest.TestCase):
         day = torch.tensor([0, 1])
         for base in (GRUDecoder(4, 8, 2, 5, n_layers=1, patch_size=3, patch_stride=2),
                      TransformerDecoder(4, 2, 5, d_model=16, n_layers=1, n_heads=2, ffn_mult=2, dropout=0.0,
-                                        patch_size=3, patch_stride=2, window=8, block_type="conv", conv_kernel=3)):
+                                        patch_size=3, patch_stride=2, window=8, block_type="conv", conv_kernel=3),
+                     TransformerDecoder(4, 2, 5, d_model=16, n_layers=2, n_heads=2, ffn_mult=2, dropout=0.0,
+                                        patch_size=3, patch_stride=2, window=8, pos_bias="relative", max_rel_dist=4,
+                                        lookahead_frames=1)):
             base = base.double()
             for w in base.day_weights:
                 torch.nn.init.normal_(w, std=0.5)

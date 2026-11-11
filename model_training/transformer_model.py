@@ -294,6 +294,13 @@ class TransformerDecoder(nn.Module):
             x = patch_frames(x, self.patch_size, self.patch_stride)
         return x
 
+    @torch.compiler.disable
+    def relative_bias(self, offset, layer):
+        '''The layer's learned bias at each clamped relative distance. Runs eagerly: inductor (torch 2.13, CUDA) fails
+        on the clamped index once shapes turn dynamic ("The argument '-((0))' is not comparable", 2026-11-11).'''
+        index = offset.clamp(1 - self.max_rel_dist, self.max_rel_dist - 1) + self.max_rel_dist - 1
+        return self.rel_bias[layer][index].float()
+
     def attention_bias(self, steps, device, future=0, window=None, layer=0):
         '''[1, H, T, T] additive mask: -slope * |distance| (or the layer's learned relative bias, [1, 1, T, T])
         inside [t - window + 1, t + future], -inf outside.'''
@@ -302,8 +309,7 @@ class TransformerDecoder(nn.Module):
         distance = offset.float()
         allowed = (distance >= -future) & (distance < (self.window if window is None else window))
         if self.pos_bias == 'relative':
-            index = offset.clamp(1 - self.max_rel_dist, self.max_rel_dist - 1) + self.max_rel_dist - 1
-            return torch.where(allowed, self.rel_bias[layer][index].float(),
+            return torch.where(allowed, self.relative_bias(offset, layer),
                                torch.full_like(distance, float('-inf')))[None, None]
         distance = distance.abs()
         # torch.where (not clamp + masked_fill) keeps this graph compilable by torch.compile/inductor
