@@ -1,4 +1,4 @@
-# Streaming neural decoding plan — updated 2026-11-10
+# Streaming neural decoding plan — updated 2026-11-11
 
 **Where things stand:** live-word WER is 8.81 / 8.26 / 8.01% at 200 ms / 500 ms / 1.5 s on val-dev against a target
 of below 6% (`current_knowledge.md` section 0, which also holds every result and the ledger of what was tried). The
@@ -62,6 +62,30 @@ fresh run paths. All results are val-dev and exploratory; one seed per arm.
    (`llm_live/run.py` pattern); the selector fine-tune (prefix + candidates + phonemes -> next word). `peft` is not
    installed and `bitsandbytes` cannot find its CUDA library, so 4-bit loading does not work today; OPT-2.7B in fp16
    fits 16 GB without it. Environment changes need approval.
+
+### Language-model steps, planned 2026-11-11 (nothing built or run)
+
+Where the language side loses words at the 500 ms deadline (`current_knowledge.md` 6.4): the ranker picks a wrong
+candidate for 5.88% of reference words, and 1.87% are absent from the candidates and from the final sentence. More
+off-the-shelf LLMs add nothing, so each step changes what the LLM knows or what the first pass offers. Both steps
+need approval before they start.
+
+- **L1. Fine-tune OPT-2.7B on the 8,072 training sentences and swap it into the deadline ranker** (estimated one
+  day: fine-tune, re-score the saved deadline lists, re-fit the ranker). Fine-tuning was the largest single-LLM gain
+  for GPT-2 Large here, OPT is still used off the shelf, and LightBeam's fine-tuning was worth 7.26 -> 6.36 at
+  sentence end. Scoring cost at the deadline does not change (about 35 ms per 50 candidates). Needs `peft` for
+  LoRA (an environment change). Pattern: `model_training/benchmark/finetune_rescorer.py`, which made the fine-tuned
+  GPT-2 Large. Reference: the current ranker (fine-tuned GPT-2 Large + OPT-2.7B + CTC ensemble) on the same
+  cross-fitted lists. Keep rule: live WER at least 0.2 lower at two of the three budgets, and deadline-respecting
+  WER no worse.
+- **L2. A less heavily pruned first-pass n-gram** (estimated one to two days, mostly a CPU build; `build-lm`
+  skill). Ours is a 4-gram pruned at 1e-8 (3.9 GB graph, about 8.5 GB of RAM); published systems use an unpruned
+  5-gram (~300 GB), and BEST reports 2.57 vs 2.92 for 5-gram vs 4-gram in its pipeline. First a size table: graph
+  size and decoder RAM at two or three lighter pruning thresholds, to find what fits in 27 GB. Then, for the
+  largest that fits: sentence-end WER, the 100-best oracle, the share of deadlines where the reference word is
+  offered (93% now), decoder memory and step time, and the ranker on the new lists. Reference: the same decider
+  with `gen4g`. Risk: a larger graph decodes more slowly, and late words already cost WER at 200 ms.
+- **Step 5 above is the third language-model step.** L1's fine-tuning path (LoRA on OPT-2.7B) is its first piece.
 
 ### Transformer fixes, prepared 2026-11-10 (none run yet)
 
