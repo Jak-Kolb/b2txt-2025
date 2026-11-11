@@ -1,4 +1,5 @@
-name: la0_indomain4g
+name: A2_indomain4g
+aliases: [la0_indomain4g]
 description: "A2 + in-domain 4-gram (seen/unseen split matters)."
 acoustic: gru768_pall_f0_120k_s10_bestval
 lm: indomain4g

@@ -6,7 +6,7 @@ export async function trainView(main) {
   main.replaceChildren(
     el("h1", { text: "Training" }),
     el("div", { class: "sub", text: "Launch from the CLI: .venv/bin/python -m harness train --from gru768_pall_f0_120k_s10_bestval --name NAME "
-      + "--set model.n_units=1024 --question \"...\" [--then-bench la0_gen4g]. The best-validation checkpoint is registered as "
+      + "--set model.n_units=1024 --question \"...\" [--then-bench A2_gen4g]. The best-validation checkpoint is registered as "
       + "NAME_bestval (selected by the trainer's val PER over all enabled val sessions; names: harness/registry/MODELS.md)." }),
     rows.length ? el("div", { class: "card table-wrap" }, el("table", {},
       el("thead", {}, el("tr", {}, ["Run", "Model", "Overrides", "Question", "State", "Last val PER", "Benchmark"].map((h) => el("th", { text: h })))),

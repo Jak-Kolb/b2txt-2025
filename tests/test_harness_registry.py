@@ -100,6 +100,16 @@ class RegistryTests(unittest.TestCase):
         finally:
             path.unlink()
 
+    def test_former_preset_name_resolves_to_the_current_name(self):
+        path = self.registry / "pipelines" / "new_preset.yaml"
+        path.write_text("name: new_preset\naliases: [old_preset]\nacoustic: tiny\nlm: fake\n")
+        try:
+            spec = self.resolve("old_preset")
+            self.assertEqual((spec["name"], spec["preset"]), ("new_preset", "new_preset"))
+            self.assertEqual(self.resolve("old_preset", decode=dict(beam=3))["preset"], "new_preset")
+        finally:
+            path.unlink()
+
     def test_preset_decode_override_requires_provenance(self):
         path = self.registry / "pipelines" / "untracked.yaml"
         path.write_text("name: untracked\nacoustic: tiny\nlm: fake\ndecode: {beam: 3}\n")
@@ -114,6 +124,7 @@ class RegistryTests(unittest.TestCase):
         names = list(loaded["acoustic"])
         self.assertIn("gru768_pall_f0_120k_s10_bestval", names)
         self.assertEqual(loaded["acoustic"]["causal_la0"]["name"], "gru768_pall_f0_120k_s10_bestval")   # former name
+        self.assertEqual(loaded["pipelines"]["la0_gen4g"]["name"], "A2_gen4g")   # former name
         for preset in loaded["pipelines"].values():
             self.assertIn(preset["acoustic"], names)
             self.assertIn(preset["lm"], loaded["lm"])

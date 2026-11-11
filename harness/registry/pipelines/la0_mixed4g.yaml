@@ -1,7 +1,0 @@
-name: la0_mixed4g
-description: "A2 + interpolated 4-gram."
-acoustic: gru768_pall_f0_120k_s10_bestval
-lm: mixed4g
-decode: {}
-decode_tuned_on: inherit
-preprocess_override: null

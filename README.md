@@ -62,7 +62,7 @@ the baseline's conda environment, replace `.venv/bin/python` with `python`. The 
 `b2txt25_lm` environment from `setup_lm.sh`; the two environments exchange files only.
 
     .venv/bin/python -m unittest discover -s tests     # synthetic data and tiny CPU models; no GPU or dataset needed
-    .venv/bin/python -m harness bench la0_gen4g        # standard benchmark of the reference pipeline
+    .venv/bin/python -m harness bench A2_gen4g        # standard benchmark of the reference pipeline
 
 Not in the repository: the dataset (public, on Dryad), trained checkpoints, run outputs, and working notes. The
 registry files under `harness/registry/` point at checkpoint folders that exist only on the development machine.

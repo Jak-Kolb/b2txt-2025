@@ -1,5 +1,6 @@
-name: rd1a_gen4g
-description: "rd1a with its own swept decode settings."
+name: A5_gen4g
+aliases: [rd1a_gen4g]
+description: "A5 with its own swept decode settings."
 acoustic: gru768_pall_f0_bwmatch_120k_s10_bestval
 lm: gen4g
 decode: {acoustic_scale: 0.3, blank_penalty: 30}

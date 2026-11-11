@@ -5,16 +5,16 @@ which I use over SSH. Run from the repository root with the acoustic environment
 ignored `results/harness/`. Machine-specific access and service setup live in a local, untracked
 `PROTOCOL.md`.
 
-    .venv/bin/python -m harness bench la0_gen4g            # standard benchmark (default)
-    .venv/bin/python -m harness bench la0_gen4g --limit 5  # smoke test (flagged, hidden in lists)
+    .venv/bin/python -m harness bench A2_gen4g            # standard benchmark (default)
+    .venv/bin/python -m harness bench A2_gen4g --limit 5  # smoke test (flagged, hidden in lists)
     .venv/bin/python -m harness runs                        # list runs
     .venv/bin/python -m harness compare RUN_A RUN_B         # paired comparison, same scope only
-    .venv/bin/python -m harness bench la0_gen4g --tier paced # 1x paced timing on the 70-trial sample (~25 min)
+    .venv/bin/python -m harness bench A2_gen4g --tier paced # 1x paced timing on the 70-trial sample (~25 min)
     .venv/bin/python -m harness serve                       # viewer + live player on 127.0.0.1:8765
     .venv/bin/python -m harness train --from gru768_pall_f0_120k_s10_bestval --name gru1024_pall_f0_120k_s10 \
-        --set model.n_units=1024 --question "Does width help?" --then-bench la0_gen4g
+        --set model.n_units=1024 --question "Does width help?" --then-bench A2_gen4g
     .venv/bin/python -m harness train-status
-    .venv/bin/python -m harness sweep rd1a_gen4g --grid acoustic_scale=0.3,0.4 --grid blank_penalty=30,90
+    .venv/bin/python -m harness sweep A5_gen4g --grid acoustic_scale=0.3,0.4 --grid blank_penalty=30,90
     .venv/bin/python -m harness rescore RUN                 # GPT-2 n-best rescoring at trial end
     .venv/bin/python -m harness commit RUN                  # word-commitment policies on recorded partials
 
@@ -25,6 +25,7 @@ The viewer listens on 127.0.0.1 only; from another machine, reach it through an 
 A pipeline is an acoustic model + preprocessing + LM graph + eight native decode settings.
 Presets live in `registry/pipelines/`; components in `registry/acoustic/` and `registry/lm/`.
 `registry/MODELS.md` explains how acoustic models are named and lists every trained model with its letter ID.
+A preset is named `<letter ID>_<LM>`: `A2_gen4g` is model A2 with the general 4-gram.
 Ad-hoc compositions: `bench --acoustic gru768_pall_f80_sm80_120k_s10_bestval --lm gen4g --decode acoustic_scale=0.5`.
 Preprocessing is the model's training smoothing; `--preprocess smooth_lookahead=2` is allowed
 but flagged `preprocess_mismatch`. Decode settings depend on the acoustic model; a preset
@@ -103,7 +104,7 @@ key/value cache for streaming (`model_training/transformer_model.py`):
         --add model.transformer.n_layers=8 --add model.transformer.n_heads=8 \
         --add model.transformer.ffn_mult=4 --add model.transformer.dropout=0.2 \
         --add model.transformer.window=64 --set lr_max=0.001 --set lr_max_day=0.001 \
-        --set epsilon=1e-8 --question "..." --then-bench la0_gen4g
+        --set epsilon=1e-8 --question "..." --then-bench A2_gen4g
 
 A newly trained model inherits the preset's decode settings, which were tuned for another model;
 sweep them (`sweep --acoustic NAME --lm gen4g --grid ...`) before comparing.

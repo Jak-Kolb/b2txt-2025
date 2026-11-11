@@ -53,7 +53,7 @@ export async function liveView(main) {
   const errorBox = el("span", { class: "error" });
   const presetSelect = el("select", {}, Object.keys(registry.pipelines).map((name) =>
     el("option", { value: name, text: `${name}: ${registry.pipelines[name].description || ""}`.slice(0, 90) })));
-  presetSelect.value = registry.pipelines.la0_gen4g ? "la0_gen4g" : presetSelect.value;
+  presetSelect.value = registry.pipelines.A2_gen4g ? "A2_gen4g" : presetSelect.value;
   const custom = el("input", { type: "checkbox" });
   const acousticSelect = el("select", {}, Object.keys(registry.acoustic).map((n) => el("option", { value: n, text: n })));
   const lmSelect = el("select", {}, Object.keys(registry.lm).map((n) => el("option", { value: n, text: n })));

@@ -1,7 +1,0 @@
-name: la4_gen4g
-description: "80 ms lookahead model with la0-tuned decode settings (not re-swept)."
-acoustic: gru768_pall_f80_sm80_120k_s10_bestval
-lm: gen4g
-decode: {}
-decode_tuned_on: inherit
-preprocess_override: null

@@ -23,7 +23,7 @@ KINDS = {
     "lm": ({"name", "graph_dir", "default_decode"},
            {"description", "expected_rss_gb", "default_decode_tuned_on"}),
     "pipelines": ({"name", "acoustic", "lm"},
-                  {"description", "decode", "decode_tuned_on", "preprocess_override"}),
+                  {"description", "decode", "decode_tuned_on", "preprocess_override", "aliases"}),
     "rescorer": ({"name", "model", "nbest", "weights", "tuned_on"}, {"description"}),
 }
 
@@ -35,7 +35,7 @@ def repo_path(path):
 
 class Entries(dict):
     """Entries by name. A former name listed under an entry's `aliases` finds the same entry; iteration gives
-    current names only (harness/registry/MODELS.md lists every model with its former name)."""
+    current names only (harness/registry/MODELS.md lists every model and preset with its former name)."""
 
     def __init__(self):
         super().__init__()
@@ -116,6 +116,7 @@ def resolve(pipeline=None, *, acoustic=None, lm=None, decode=None, preprocess=No
     preset = registry["pipelines"][pipeline] if pipeline else {}
     if pipeline is None and not (acoustic and lm):
         raise ValueError("Give a pipeline preset or both --acoustic and --lm")
+    pipeline = preset.get("name")   # the current name, also when a former name was given
     lm_name = lm or preset["lm"]
     acoustic_entry = registry["acoustic"][acoustic or preset["acoustic"]]
     acoustic_name = acoustic_entry["name"]   # the current name, also when a former name was given

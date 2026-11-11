@@ -22,7 +22,7 @@ export async function runsView(main) {
     }
     body.replaceChildren();
     if (!visible.length) {
-      body.append(el("div", { class: "empty", text: "No runs yet. Try: .venv/bin/python -m harness bench la0_gen4g" }));
+      body.append(el("div", { class: "empty", text: "No runs yet. Try: .venv/bin/python -m harness bench A2_gen4g" }));
     }
     for (const [hash, group] of groups) {
       const first = group[0].scope;

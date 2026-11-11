@@ -1,5 +1,6 @@
-name: g2_gen4g
-description: "g2 with its own swept decode settings."
+name: A3_gen4g
+aliases: [g2_gen4g]
+description: "A3 with its own swept decode settings."
 acoustic: gru768_pall_f0_mask_120k_s10_bestval
 lm: gen4g
 decode: {acoustic_scale: 0.5, blank_penalty: 90}

@@ -1,4 +1,5 @@
-name: tfm_gen4g
+name: Z1_gen4g
+aliases: [tfm_gen4g]
 description: "Causal Transformer (Z1) with its own swept decode settings (best of 7 on val-dev)."
 acoustic: tfm512x8_p5120_f0_120k_s10_bestval
 lm: gen4g

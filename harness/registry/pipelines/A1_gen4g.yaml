@@ -1,0 +1,8 @@
+name: A1_gen4g
+aliases: [la4_gen4g]
+description: "A1 (smoothing reaches 80 ms ahead) with A2-tuned decode settings (not re-swept)."
+acoustic: gru768_pall_f80_sm80_120k_s10_bestval
+lm: gen4g
+decode: {}
+decode_tuned_on: inherit
+preprocess_override: null

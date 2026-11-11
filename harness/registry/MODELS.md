@@ -7,8 +7,8 @@ Every acoustic model has two labels.
 - **Letter ID**, for example `G2`. This is a short label for plots, tables and writing. It points to one training run.
 
 The registry was renamed to this convention on 2026-11-10. Each entry lists its old name under `aliases`, so an
-old name still works in harness commands. Checkpoint folders, run folders and saved results were not renamed and
-still carry the old names ("Old name" in the tables below).
+old name still works in harness commands. Saved runs and training records show the current names. Checkpoint
+folders and run folders were not renamed and still carry the old names ("Old name" in the tables below).
 
 ## Naming convention
 
@@ -150,6 +150,28 @@ plain name and exist only as `_bestval` or `_b20000`.
 | Z | `tfm512x8` | Transformer, width 512, 8 layers | 2026-09-28 |
 
 The next new GRU architecture is H. The next new Transformer architecture is W.
+
+## Pipeline presets
+
+A preset is one model with one language model and its decode settings (`harness/registry/pipelines/`), for
+example `harness bench A2_gen4g`. A preset is named `<ID>_<language model>`. This is the only place where a letter
+ID is part of a name; the preset file gives the model's full name and so fixes the weights.
+
+| Preset | Model | Language model | Decode settings | Old name |
+|---|---|---|---|---|
+| `A0_gen4g` | `gru768_pall_f80_sm80_upstream_120k_s10_bestval` | general 4-gram | language-model defaults | `baseline_gen4g` |
+| `A1_gen4g` | `gru768_pall_f80_sm80_120k_s10_bestval` | general 4-gram | language-model defaults (tuned on A2) | `la4_gen4g` |
+| `A2_gen4g` | `gru768_pall_f0_120k_s10_bestval` | general 4-gram | language-model defaults (tuned on A2) | `la0_gen4g` |
+| `A2_indomain4g` | `gru768_pall_f0_120k_s10_bestval` | in-domain 4-gram | language-model defaults | `la0_indomain4g` |
+| `A2_mixed4g` | `gru768_pall_f0_120k_s10_bestval` | interpolated 4-gram | language-model defaults | `la0_mixed4g` |
+| `A2_owt1gram` | `gru768_pall_f0_120k_s10_bestval` | shipped 1-gram | language-model defaults | `la0_owt1gram` |
+| `A3_gen4g` | `gru768_pall_f0_mask_120k_s10_bestval` | general 4-gram | own sweep | `g2_gen4g` |
+| `A4_gen4g` | `gru768_pall_f0_daylr_120k_s10_bestval` | general 4-gram | own sweep | `g3_gen4g` |
+| `A5_gen4g` | `gru768_pall_f0_bwmatch_120k_s10_bestval` | general 4-gram | own sweep | `rd1a_gen4g` |
+| `Z1_gen4g` | `tfm512x8_p5120_f0_120k_s10_bestval` | general 4-gram | own sweep | `tfm_gen4g` |
+
+Most benchmarks do not use a preset of their own: they start from `A2_gen4g` and swap the model
+(`bench A2_gen4g --acoustic <full name>`), and the run is then named `<full name>+gen4g`.
 
 ## All trained models
 
