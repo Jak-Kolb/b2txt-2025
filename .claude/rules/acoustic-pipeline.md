@@ -5,7 +5,7 @@ paths:
 
 # Acoustic pipeline
 
-Read root AGENTS.md and brainstorm/PLAN.md first.
+Read root AGENTS.md and docs/PLAN.md first.
 
 - Start B2T work from the existing GRU. Model/context changes are experimental
   levers, not the presumed paper contribution. Preserve saved-argument consistency.

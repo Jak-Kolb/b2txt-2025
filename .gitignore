@@ -57,13 +57,19 @@ language_model/generated_lm/
 CLAUDE.md
 AGENTS.md
 RESULTS.md
-presentations/*
 
 # ---- internal notes ----
 current_knowledge.md
 TORCH_COMPILE_BUG.md
 transformer_tests_explanation.md
-# Personal explainer scripts and figures. One file is tracked (added with -f) because tests/ and data_prep/
+SEMANTIC_PROBE_PLAN.md
+research_prompt.md
+research_report_*.md
+docs/reports/
+docs/research/
+# All figures and the scripts that draw them (see figures/README.md); regenerate rather than commit images
+figures/
+# Personal analysis and explainer scripts. One file is tracked (added with -f) because tests/ and data_prep/
 # import it: learning/live_eval/clock_a.py
 learning/
 

@@ -5,7 +5,7 @@ description: Build or measure a language model for the B2T pipeline within an au
 
 # Language-model work
 
-Read AGENTS.md, brainstorm/PLAN.md, and .claude/rules/language-model.md.
+Read AGENTS.md, docs/PLAN.md, and .claude/rules/language-model.md.
 Establish the operation, development data, compute limits, and fresh output paths.
 Existing authorization covers routine steps within scope; downloads and large
 builds must themselves be within the requested work.

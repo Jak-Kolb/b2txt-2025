@@ -1,8 +1,10 @@
-# Streaming neural decoding plan — updated 2026-11-11
+# Streaming neural decoding plan — updated 2026-11-17
 
-**Where things stand:** live-word WER is 8.81 / 8.26 / 8.01% at 200 ms / 500 ms / 1.5 s on val-dev against a target
+**Where things stand:** live-word WER is 8.81 / 7.61 / 7.42% at 200 ms / 500 ms / 1.5 s on val-dev against a target
 of below 6% (`current_knowledge.md` section 0, which also holds every result and the ledger of what was tried). The
-experiments below are prepared and not yet run. The research direction remains exploratory.
+500 ms and 1.5 s results come from the LightBeam-recipe Transformer Y7 deciding the words (at 500 ms with more late
+words than the GRU decider's 8.18); the best sentence-end result is Y6 with GPT-2 Large rescoring, 5.47. No Transformer
+reliably meets 200 ms yet. No queue is running. The research direction remains exploratory.
 
 Models are named as in `harness/registry/MODELS.md`, which also lists the letter IDs used here (A2, G2, X6).
 
@@ -24,9 +26,9 @@ freeze unrelated development. The August plan, the September milestones of this 
 and the review itself are in `docs/history/` (index: `docs/history/README.md`).
 `results/RESULTS.md` (local) is the source-linked record of the September measurements.
 
-## Next experiments, prepared 2026-11-10 (none run yet)
+## Next experiments, prepared 2026-11-10 (step 3 done with no arm kept, step 4 running, the rest not run)
 
-Target: live-word WER below 6% (`current_knowledge.md` section 0; now 8.81 / 8.26 / 8.01 at 200 ms / 500 ms / 1.5 s).
+Target: live-word WER below 6% (`current_knowledge.md` section 0; now 8.81 / 7.61 / 7.42 at 200 ms / 500 ms / 1.5 s).
 The ranker is saturated on its current inputs (more LLMs, data and capacity add nothing), so each step adds new
 evidence. Code is in place and smoke-checked on CPU; GPU smokes happen at launch (`harness train` smokes 50 batches
 before the real run). Rules as always: one GPU process at a time, no 8.5 GB decoder alongside GPU jobs, nice 19,
@@ -42,13 +44,9 @@ fresh run paths. All results are val-dev and exploratory; one seed per arm.
    `nohup .venv/bin/python results/harness/queue/late_deadlines_20261109.py > results/harness/queue/late_deadlines_20261109_run.log 2>&1 &`
    Result in `learning/live_eval/out/llm_live/ranker_lists_late.{json,log}`. Late deadlines often clip to the
    trial end (oracle endpointing): report that share with the numbers.
-3. **Phrase splicing and diphone targets** (4 trainings of 2-4 h, then decoding).
-   First the cut points for every training trial (a few minutes of GPU):
-   `.venv/bin/python data_prep/word_boundaries.py`
-   then `nohup .venv/bin/python results/harness/queue/acoustic_aug_20261110.py > results/harness/queue/acoustic_aug_20261110_run.log 2>&1 &`
-   (arm names as arguments to run a subset). Config keys: `dataset.splice.prob`, `dataset.splice.boundaries`,
-   `diphone_weight`. Keep rule (in the script): best WER at least 0.3 below the matched 20k reference and word ends
-   no more than 40 ms later; kept models go to the ranker as decider / ensemble member.
+3. **Phrase splicing and diphone targets.** Done 2026-11-16: no arm passed its keep rule on the GRU or the conv
+   Transformer (results in `current_knowledge.md` 4.10). The cut points from `data_prep/word_boundaries.py` remain
+   for step 4.
 4. **Non-CTC second scorer** (one training of roughly 1-2 h per decider, untimed; needs step 3's cut points).
    `.venv/bin/python model_training/aed_scorer.py --encoder gru1344_head256_pall_f160_20k_s10 --out model_training/trained_models/aed_gru1344_head256_pall_f160_20k_s10_$(date -u +%Y%m%dT%H%M%SZ)`
    then, per deadline, `learning/live_eval/llm_live/aed_features.py features HEAD_DIR la1344_r2_s10_final 1` (G2
@@ -87,41 +85,61 @@ need approval before they start.
   with `gen4g`. Risk: a larger graph decodes more slowly, and late words already cost WER at 200 ms.
 - **Step 5 above is the third language-model step.** L1's fine-tuning path (LoRA on OPT-2.7B) is its first piece.
 
-### Transformer fixes, prepared 2026-11-10 (none run yet)
+### Improving on the reproduced LightBeam model, planned 2026-11-16
 
-The 2026-11-03 "faithful" LightBeam run was not faithful (`current_knowledge.md` 4.8, "Reproduction gaps"). Their own
-repository reports, on full validation with their decoder, causal Transformer 5.09% vs baseline GRU 6.2-6.4% (10
-seeds each), so a faithful run should land near 0.81 of our baseline GRU. Fixes are coded, unit-tested and checked on
-CPU under `torch.compile`; no GPU run yet.
+Y6 is LightBeam's recipe reproduced (6.97; `current_knowledge.md` 4.9), and nothing of ours has beaten it. Ours so
+far: averaging the last six snapshots (-0.30 on Y6, -0.01 on Y7) and the causal-smoothing variant Y7 (7.43, worse
+than Y6 with twice the future input). One seed each, and their own seeds spread 4.5-6.0, so a difference under about
+0.3 is not a result. Only the items marked "queued" are scheduled; the others need a go-ahead.
 
-| Fix | Config key | Was |
-|---|---|---|
-| Masks up to 5% of the trial's frames (about 40% of a median trial masked) | `time_mask_max_frac=0.05`, no `time_mask_max_len` | up to 5 frames (22%) |
-| Left context drawn per batch from 5-20 s in training | `model.transformer.window_min=63` | fixed 20 s |
-| Learned relative position bias | `model.transformer.pos_bias=relative` | ALiBi |
-| CTC loss divided by target length | `ctc_length_norm=true` | per-trial sum |
-| No random cut | `dataset.data_transforms.random_cut=0` | 3 |
-| Batches are shuffled passes over all trials | `dataset.sampling=trials` | 4 random days per batch (small days drawn up to 3x as often) |
-| Dropout 0.2 on frame embeddings only; dropout inside the feed-forward | `model.input_network.input_layer_dropout=0`, `model.transformer.embed_dropout=0.2`, `model.transformer.ffn_dropout=true` | 0.2 on raw bins + 0.35 on embeddings; none in the feed-forward |
-| PyTorch default initialization | `model.transformer.init=torch` | Xavier-uniform, zero biases |
-| Centred smoothing, 80 ms of future input (arm A only) | `dataset.data_transforms.smooth_lookahead=4` | causal |
-| Consistency-regularized CTC (arm C only) | `cr_ctc_weight=0.2` | - |
+**A. Measure what the two models already give (no training).**
+- A1. **Y6 through the deadline ranker** as decider and as ensemble member. Y7 was done 2026-11-17
+  (`current_knowledge.md` 6.6): at commit rules matched to its later word ends it gives 7.61 at 500 ms (more late
+  words than G2's 8.18) and 7.42 at 1.5 s (keep rule met). Without the LLM step Y6 is 0.15-0.25 better than Y7 (final
+  weights) and its average about 0.6 better (6.2).
+  Keep rule: live WER at least 0.2 below the G2 decider at the same budget, deadline-respecting WER no worse. Needs A4.
+- A2. **Live replay of Y6 / Y7 at their best acoustic scale (0.3)**, CPU: the recorded replays used 0.4, where both
+  are 0.5 worse at sentence end.
+- A3. **Word voting and the CTC ensemble with Y6 / Y7 added**, from saved outputs (`learning/per_eval/sentence_vote.py`;
+  reference 7.00 with 14 GRUs, 6.69 with three older Transformers), and their word-end timing against G15 from the
+  saved replays (late words cost 2.1 points at 200 ms).
+- A4. **Count smoothing look-ahead in the ranker** (`ctc_features.lookahead` asserts none; `ranker.budget()`), so Y6
+  can be a member and a decider. Code only.
 
-- **T0. Rescore the existing model** (minutes of GPU, no training): how much of the gap is the decoder?
-  `.venv/bin/python -m harness rescore 20261104T002238Z_tfm_lb_r2_63k_s10_avg+gen4g-acoustic_scale-0.2_sweep`
-- **T1-T3. Three trainings of about 100 min each, then decoding:**
-  `nohup .venv/bin/python results/harness/queue/tfm_lbfix_20261111.py > results/harness/queue/tfm_lbfix_20261111_run.log 2>&1 &`
-  (arm names as arguments to run a subset).
-  - A `tfm384x5_lb_p20000_f80_sm80_noday_v2_63k_s10`: their recipe as closely as this trainer allows (centred smoothing, no attention
-    look-ahead). The reproduction control. Reproduced if its best 4-gram WER is 7.0 or below (0.81 x A2's
-    8.51) with the best acoustic scale at 0.3 or above; if it is 8.5 or above, run their code unmodified next.
-  - B `tfm384x5_lb_p20000_f160_noday_v2_63k_s10`: the same with causal smoothing and R = 2; plugs into the live pipeline as is.
-  - C `tfm384x5_lb_p20000_f160_noday_v2_crctc_32k_s10`: B + CR-CTC on half the batches.
-  Read-out and keep rule are in the script (best-temperature CTC loss, best acoustic scale, best WER; reference 0.442 /
-  0.2 / 9.15; GRU 7.77). PER is not the criterion. The fixes are bundled, so a gain is not attributed to any one. One
-  seed per arm; their seeds spread 4.5-6.0%.
-- Arm A cannot join the deadline ranker until `ctc_features.lookahead` counts smoothing look-ahead (it asserts none).
-- Suggested order for the first day: step 1 (CPU, under an hour), T0, arms A and B, then C or step 3's queue overnight.
+**B. Trainings on the corrected recipe (about 2 h each at 63k; one GPU process at a time).**
+- B1. **Seeds.** Y7 seed 2 done (Y9: 7.66 / 7.58 vs Y7 7.44 / 7.43; live without the LLM unchanged). Y6 seed 2
+  is not run: it is the model every arm here is compared with.
+- B2. **CR-CTC (Y8: 8.71 / 8.57 at scale 0.5, the grid edge; higher scales queued).** As an improvement on Y7 it has
+  to reach 7.13 or below (0.3 under
+  Y7's 7.43, average model) at the same compute. If it does: the same on Y6's setting.
+- B3. **Where the future input is spent.** Y6 (80 ms, centred smoothing) beat Y7 (160 ms, last-layer attention), with
+  two things changed at once. Two arms on the corrected recipe:
+  - `tfm384x5_lb_p20000_f160_sm80_noday_v2_63k_s10`: centred smoothing plus one frame of attention look-ahead, 160 ms
+    in total. Does attention look-ahead add to Y6? Keep rule: at least 0.3 below Y6's average; then it is the 500 ms
+    and 1.5 s decider candidate.
+  - `tfm384x5_lb_p20000_f0_noday_v2_63k_s10`: no future input at all, the 200 ms candidate. Reference D1 (8.22 at
+    sentence end, 11.6 live without the LLM step). Keep rule: at least 0.3 below D1.
+- B4. **Phrase splicing and diphone targets on this recipe:** not run, since neither passed its keep rule on the GRU
+  or the conv Transformer (2026-11-16).
+- B5. **More seeds of the best variant as ensemble members**, only after A1 / A3 show that a Y member helps.
+
+**C. Make it real time (needed before any latency claim).** A streaming forward pass for the relative-bias
+Transformer (per-layer caches over the 20 s window; the output for frame t leaves when frame t + R arrives), checked
+against the offline outputs as the GRU head was (2e-5), then the harness timing check. Today the Y models are
+replayed from outputs computed offline under the causal mask.
+
+**D. Outside ideas.** `docs/research/research_prompt.md` (not tracked) is a brief for an external deep-research run
+on new architectures and training ideas; the report it produced is `docs/research/research_report_2026-11-17.md`.
+Its proposals are triaged into this plan; none is adopted unread.
+
+- **Follow-up queue, started 2026-11-16 12:24 EST, reordered 13:50** (`results/harness/queue/followup_20261116.py`,
+  log `results/harness/queue/followup_20261116_run.log`). Done: X9 (conv Transformer + diphone) trained; decoding of
+  G16, G17, Y8, X8 and X9 (`results/harness/queue/20261116T185056Z_decode`, recorded in `current_knowledge.md`).
+  Running since 2026-11-17 00:01 UTC: the step-4 second scorer on G2, then on Y7, then Y7's second seed (`..._63k_s11`; its first attempt was stopped at batch
+  8000 on the user's request) and its decoding. Then `results/harness/queue/y8_scale_up_20261116.py` (waits for the
+  queue's pid) decodes Y8 at scales 0.6, 0.7, ... until WER rises (log `y8_scale_up_20261116.log`).
+  Restart the queue from a stage with `--from aed_g2` etc. Afterwards: Y7 (and any
+  winners) in the deadline ranker.
 
 ### What the 2026-11-10 literature check changes
 

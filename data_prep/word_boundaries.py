@@ -1,5 +1,5 @@
 """Between-word cut points for every training trial, for phrase-splicing augmentation (dataset.splice_trials;
-brainstorm/PLAN.md step 3). Prepared 2026-11-09.
+docs/PLAN.md step 3). Prepared 2026-11-09.
 
 A registered acoustic model's log-probs on each TRAINING trial are force-aligned to the trial's own phoneme labels
 (CTC Viterbi, learning/live_eval/clock_a.viterbi_label_ends). For each ' | ' label that separates two words, the cut

@@ -50,7 +50,7 @@ integration are pending.
 |---|---|
 | How models are named, and every trained model with its letter ID | [`harness/registry/MODELS.md`](harness/registry/MODELS.md) |
 | Harness commands: bench, compare, sweep, train, live player | [`harness/README.md`](harness/README.md) |
-| What is being worked on next | [`brainstorm/PLAN.md`](brainstorm/PLAN.md) |
+| What is being worked on next | [`docs/PLAN.md`](docs/PLAN.md) |
 | Paced replay and output tracing | [`model_training/benchmark/README.md`](model_training/benchmark/README.md) |
 | Earlier plans, reviews and logs | [`docs/history/`](docs/history/README.md) |
 

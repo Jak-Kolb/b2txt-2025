@@ -5,7 +5,7 @@ description: Configure or launch an authorized acoustic training run in the B2T 
 
 # Training
 
-Read AGENTS.md, brainstorm/PLAN.md, and .claude/rules/acoustic-pipeline.md.
+Read AGENTS.md, docs/PLAN.md, and .claude/rules/acoustic-pipeline.md.
 Apply validity issues to the affected experiment: R-D2/R-D3 require an amendment;
 unrelated authorized development is not blocked by that finding.
 

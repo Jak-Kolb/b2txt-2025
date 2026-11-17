@@ -3,7 +3,7 @@
 Benchmark, compare, and watch B2T decoding pipelines. Training and benchmarks run on my own PC,
 which I use over SSH. Run from the repository root with the acoustic environment; outputs go to
 ignored `results/harness/`. Machine-specific access and service setup live in a local, untracked
-`PROTOCOL.md`.
+`docs/PROTOCOL.md`.
 
     .venv/bin/python -m harness bench A2_gen4g            # standard benchmark (default)
     .venv/bin/python -m harness bench A2_gen4g --limit 5  # smoke test (flagged, hidden in lists)

@@ -1,4 +1,4 @@
-"""A non-CTC second scorer on a frozen acoustic encoder (prepared 2026-11-10, NOT yet trained; brainstorm/PLAN.md
+"""A non-CTC second scorer on a frozen acoustic encoder (prepared 2026-11-10, NOT yet trained; docs/PLAN.md
 step 4).
 
 A small attention decoder reads the frozen encoder's features (what its output layer reads) and predicts the phoneme
