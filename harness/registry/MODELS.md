@@ -271,6 +271,8 @@ One row per training run. "Weights" lists what is registered for the run: `final
 | G13 | `gru1344_head256_pall_f160_20k_s11` | final, bestval | `la1344_r2_s11` | 2026-10-20 | Seed 11. |
 | G14 | `gru1344_head256_pall_f160_20k_s10_run2` | final, bestval | `fix_la1344_r2_s10` | 2026-10-27 | G2 trained again after the torch.compile gradient fix of 2026-10-26. |
 | G15 | `gru1344_head256_pall_f160_20k_s10_run3` | final, avg, bestval | `snap_la1344_r2_20k_s10` | 2026-10-28 | G2 trained a third time, saving the snapshots for averaging. |
+| G16 | `gru1344_head256_pall_f160_splice_20k_s10` | final, avg, bestval | - | 2026-11-11 | G15's recipe with phrase splicing (probability 0.3). Best WER 7.70 / 7.71 (final / avg) vs G15 7.77 / 7.94: keep rule not met. |
+| G17 | `gru1344_head256_pall_f160_diph_20k_s10` | final, avg, bestval | - | 2026-11-11 | G15's recipe with the diphone auxiliary target (weight 0.3). Best WER 8.37 / 8.24: worse than G15. |
 
 ### X: Transformer, width 384, 8 layers, a causal convolution in every block
 
@@ -283,6 +285,8 @@ One row per training run. "Weights" lists what is registered for the run: `final
 | X5 | `tfm384x8_conv_p5120_f160_ent12_20k_s10` | final, avg, bestval | `tfm_conv_ent12_r2_20k_s10` | 2026-10-27 | Entropy term, weight 0.12. |
 | X6 | `tfm384x8_conv_p5120_f160_shared_20k_s10` | final, avg, bestval | `tfm_conv_shared_r2_20k_s10` | 2026-10-27 | One input matrix shared by all sessions. |
 | X7 | `tfm384x8_conv_p5120_f160_ictc4_20k_s10` | final, avg, bestval | `tfm_conv_ictc4_r2_20k_s10` | 2026-10-27 | Intermediate CTC loss at layer 4. |
+| X8 | `tfm384x8_conv_p5120_f160_shared_splice_20k_s10` | final, avg, bestval | - | 2026-11-12 | X6's recipe with phrase splicing (probability 0.3). Best WER 8.72 / 8.52 vs X6 8.80 / 8.67: keep rule not met. |
+| X9 | `tfm384x8_conv_p5120_f160_shared_diph_20k_s10` | final, avg, bestval | - | 2026-11-16 | X6's recipe with the diphone auxiliary target (weight 0.3). Best WER 8.96 / 8.81: worse than X6. |
 
 ### Y: Transformer, width 384, 5 layers, LightBeam style
 
@@ -293,6 +297,10 @@ One row per training run. "Weights" lists what is registered for the run: `final
 | Y3 | `tfm384x5_lb_p20000_f0_noday_63k_s10` | final, avg, bestval | `tfm_lb_r0_63k_s10` | 2026-11-03 | LightBeam reproduction: no per-session layers, step schedule. |
 | Y4 | `tfm384x5_lb_p20000_f160_noday_63k_s10` | final, avg, bestval | `tfm_lb_r2_63k_s10` | 2026-11-03 | LightBeam reproduction with 2 frames of look-ahead. |
 | Y5 | `tfm384x5_lb_p20000_f160_noday_ls05_63k_s10` | final, avg, bestval | `tfm_lb_ls05_r2_63k_s10` | 2026-11-04 | Adds label smoothing 0.05. |
+| Y6 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_63k_s10` | final, avg, bestval | - | 2026-11-11 | Corrected LightBeam recipe (v2) with their centred smoothing, no attention look-ahead. Reproduction control. |
+| Y7 | `tfm384x5_lb_p20000_f160_noday_v2_63k_s10` | final, avg, bestval | - | 2026-11-11 | Corrected LightBeam recipe (v2), causal smoothing, 160 ms of attention look-ahead. |
+| Y8 | `tfm384x5_lb_p20000_f160_noday_v2_crctc_32k_s10` | final, avg, bestval | - | 2026-11-12 | Y7 + consistency-regularized CTC (weight 0.2), half the batches. Best WER 8.64 / 8.57 at scale 0.6 / 0.5 (Y7 7.44 / 7.43): keep rule not met. |
+| Y9 | `tfm384x5_lb_p20000_f160_noday_v2_63k_s11` | final, avg, bestval | - | 2026-11-16 | Second seed of Y7 (seed 11, data seed 2). Best WER 7.66 / 7.58 (Y7 7.44 / 7.43). |
 
 ### Z: Transformer, width 512, 8 layers
 
@@ -307,12 +315,4 @@ Prepared in `results/harness/queue/` and not trained. Each takes the next free n
 training starts. New tags: `v2` (the 2026-11-11 corrections to the LightBeam reproduction), `crctc` (CR-CTC
 consistency loss, weight 0.2), `splice` (phrase splicing), `diph` (diphone targets).
 
-| Letter | Full name | What it tests |
-|---|---|---|
-| Y | `tfm384x5_lb_p20000_f80_sm80_noday_v2_63k_s10` | Corrected LightBeam reproduction with their centred smoothing and no attention look-ahead |
-| Y | `tfm384x5_lb_p20000_f160_noday_v2_63k_s10` | The same with causal smoothing and 160 ms of attention look-ahead |
-| Y | `tfm384x5_lb_p20000_f160_noday_v2_crctc_32k_s10` | Adds the CR-CTC consistency loss, at half the batches |
-| G | `gru1344_head256_pall_f160_splice_20k_s10` | Phrase splicing on G2's recipe |
-| G | `gru1344_head256_pall_f160_diph_20k_s10` | Diphone targets on G2's recipe |
-| X | `tfm384x8_conv_p5120_f160_shared_splice_20k_s10` | Phrase splicing on X6's recipe |
-| X | `tfm384x8_conv_p5120_f160_shared_diph_20k_s10` | Diphone targets on X6's recipe |
+None at the moment.

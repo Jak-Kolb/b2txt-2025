@@ -1,0 +1,44 @@
+name: tfm384x8_conv_p5120_f160_shared_diph_20k_s10_bestval
+checkpoint_dir: model_training/trained_models/tfm384x8_conv_p5120_f160_shared_diph_20k_s10_20261116T172428Z/checkpoint
+description: 'Fork of gru768_pall_f0_120k_s10_bestval: Step 3 (phrase splicing / diphone
+  targets), arm tfm384x8_conv_p5120_f160_shared_diph_20k_s10. See results/harness/queue/acoustic_aug_20261110.py.
+  20k-batch schedule (num_training_batches = lr_decay_steps = lr_decay_steps_day =
+  20000), fixed final snapshot (batch 19999, chosen before training; no checkpoint
+  selection); val-dev greedy PER and WER at acoustic scales 0.25 / 0.3 / 0.4 at gen4g.'
+training:
+  config: results/harness/train/20261116T172428Z_tfm384x8_conv_p5120_f160_shared_diph_20k_s10/config.yaml
+  log: model_training/trained_models/tfm384x8_conv_p5120_f160_shared_diph_20k_s10_20261116T172428Z/training_log
+  forked_from: gru768_pall_f0_120k_s10_bestval
+  overrides:
+  - model.type=transformer
+  - model.transformer.d_model=384
+  - model.transformer.n_layers=8
+  - model.transformer.n_heads=6
+  - model.transformer.ffn_mult=4
+  - model.transformer.lookahead_frames=2
+  - model.transformer.conv_kernel=9
+  - weight_decay_exclude_1d=true
+  - model.transformer.block_type=conv
+  - model.transformer.dropout=0.2
+  - model.transformer.drop_path=0.1
+  - model.transformer.window=64
+  - model.transformer.shared_input=true
+  - checkpoint_batches=[15000,16000,17000,18000,19000,19999]
+  - diphone_weight=0.3
+  - lr_max=0.001
+  - lr_max_day=0.001
+  - epsilon=1e-8
+  - weight_decay=0.05
+  - num_training_batches=20000
+  - lr_decay_steps=20000
+  - lr_decay_steps_day=20000
+  - batches_per_val_step=1000
+  git_head: acf3f7e6b411eafdda321edfc576a45169ea6b33
+  git_dirty: true
+  train_dir: results/harness/train/20261116T172428Z_tfm384x8_conv_p5120_f160_shared_diph_20k_s10
+selection:
+  rule: 'rnn_trainer best greedy-CTC val PER (ties: val loss) over all enabled val
+    sessions'
+  data:
+  - val-dev
+  - former-val-test

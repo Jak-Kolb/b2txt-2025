@@ -1,0 +1,31 @@
+name: gru1344_head256_pall_f160_splice_20k_s10_bestval
+checkpoint_dir: model_training/trained_models/gru1344_head256_pall_f160_splice_20k_s10_20261111T163353Z/checkpoint
+description: 'Fork of gru768_pall_f0_120k_s10_bestval: Step 3 (phrase splicing / diphone
+  targets), arm gru1344_head256_pall_f160_splice_20k_s10. See results/harness/queue/acoustic_aug_20261110.py.
+  20k-batch schedule (num_training_batches = lr_decay_steps = lr_decay_steps_day =
+  20000), fixed final snapshot (batch 19999, chosen before training; no checkpoint
+  selection); val-dev greedy PER and WER at acoustic scales 0.25 / 0.3 / 0.4 at gen4g.'
+training:
+  config: results/harness/train/20261111T163353Z_gru1344_head256_pall_f160_splice_20k_s10/config.yaml
+  log: model_training/trained_models/gru1344_head256_pall_f160_splice_20k_s10_20261111T163353Z/training_log
+  forked_from: gru768_pall_f0_120k_s10_bestval
+  overrides:
+  - model.lookahead_frames=2
+  - model.lookahead_units=256
+  - checkpoint_batches=[15000,16000,17000,18000,19000,19999]
+  - dataset.splice.prob=0.3
+  - dataset.splice.boundaries=/home/fishinjak/code/nejm-brain-to-text/results/word_boundaries/bigru768_pall_fall_20k_s10.json
+  - num_training_batches=20000
+  - lr_decay_steps=20000
+  - lr_decay_steps_day=20000
+  - model.n_units=1344
+  - batches_per_val_step=1000
+  git_head: acf3f7e6b411eafdda321edfc576a45169ea6b33
+  git_dirty: true
+  train_dir: results/harness/train/20261111T163353Z_gru1344_head256_pall_f160_splice_20k_s10
+selection:
+  rule: 'rnn_trainer best greedy-CTC val PER (ties: val loss) over all enabled val
+    sessions'
+  data:
+  - val-dev
+  - former-val-test
