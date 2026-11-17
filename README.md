@@ -9,30 +9,63 @@ unchanged.
 shown within 200 ms, 500 ms or 1.5 s of the moment the participant finished attempting it. Whole-sentence
 (bidirectional) acoustic models are excluded, and rescoring after the sentence ends does not count.
 
-## Status (2026-11-10)
+## Status (2026-11-17)
 
-| Budget after the word ends | Live word error rate |
-|---|---|
-| 200 ms | 8.81% |
-| 500 ms | 8.26% |
-| 1.5 s | 8.01% |
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/dark/02_best_possible.png">
+  <img src="docs/images/light/02_best_possible.png" alt="Bar chart of the best word error rate at each time limit. Live words: 8.81% at 200 ms, 7.61% at 500 ms, 7.42% at 1.5 s. After the sentence: 5.47%. Goal: 6%.">
+</picture>
+
+| Time limit after the word ends | Live word error rate | Late words counted as errors | Deciding model | CTC ensemble |
+|---|---|---|---|---|
+| 200 ms | 8.81% | 10.90% | GRU D1 (causal) | 11 causal GRUs |
+| 500 ms | 7.61% | 10.83% | Transformer Y7 | 11 causal GRUs, GRU G12, Y7 |
+| 500 ms | 8.18% | 8.86% | GRU G2 | 19 GRUs, 3 Transformers |
+| 1.5 s | 7.42% | 8.07% | Transformer Y7 | 22 GRUs, 3 Transformers |
+| After the sentence (not the target) | 5.47% | - | Transformer Y6 | none; GPT-2 Large rescores the decoder's 100 best sentences |
+
+Each live result comes from a full system, not one model. The deciding acoustic model and its 4-gram decoder
+propose candidates for the next word, and at each word's deadline a learned ranker picks one, using two language
+models (fine-tuned GPT-2 Large and OPT-2.7B) and the CTC scores of an ensemble of acoustic models. D1 and G2 are
+1,344-unit GRUs, G2 with 160 ms of look-ahead. Y6 and Y7 are 9.7M-parameter Transformers trained with the LightBeam
+recipe (Feghhi et al. 2026); Y7 looks 160 ms ahead and Y6 80 ms. Every model and its letter ID is listed in
+[`harness/registry/MODELS.md`](harness/registry/MODELS.md).
+
+The two 500 ms rows trade off: Y7 picks better words than G2 but marks word ends later, so 3.2% of its words were
+correct but shown after the deadline (G2: 0.7%). No Transformer reliably meets 200 ms yet.
 
 These are on the project's validation partition of the public B2T '25 data ("val-dev": 1,253 trials, 8,277 words,
 35 sessions, one participant). Read them as exploratory:
 
-- Models and settings were chosen on this same partition, so the numbers are optimistic. There is no independent
-  holdout, and the competition's test labels are not public.
+- Models, ensembles and settings were chosen on this same partition, so the numbers are optimistic. There is no
+  independent holdout, and the competition's test labels are not public.
+- Live results are offline replays of the models' outputs under the timing rules, not a running streaming system;
+  the Transformers used here have no streaming implementation yet. The ranker is trained on half of the sessions
+  and scored on the other half, both ways.
 - Word-end times come from a forced alignment, not from measured speech.
 - Most comparisons are single training runs.
 
-For reference, waiting for the whole sentence gives 7.5-8.5% with the 4-gram decoder and 5.8-6.5% with neural
-rescoring of the finished sentence. A second track on the Makin lab's ECoG dataset is intended; access and
-integration are pending.
+A second track on the Makin lab's ECoG dataset is intended; access and integration are pending.
+
+### How the 500 ms result is built
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/dark/01_live_wer_waterfall_500ms.png">
+  <img src="docs/images/light/01_live_wer_waterfall_500ms.png" alt="Waterfall chart of live word error rate at 500 ms: GRU G2's own words 11.16%; Transformer Y7 instead of the GRU -0.76; two language models choosing the word -1.81; CTC scores of an acoustic-model ensemble -0.98; result 7.61%.">
+</picture>
+
+### GRU or Transformer, one acoustic model each
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/dark/03_gru_vs_transformer.png">
+  <img src="docs/images/light/03_gru_vs_transformer.png" alt="Bar chart of one GRU against one Transformer with the same language models: 500 ms 8.88% vs 8.59%, 1.5 s 8.66% vs 8.53%, sentence end 6.10% vs 5.58%, no time limit 5.76% vs 5.47%; at 200 ms only the GRU, 9.53%.">
+</picture>
 
 ## What this repository adds
 
 - **Streaming acoustic models** (`model_training/`): causal GRUs with a bounded look-ahead of 80 ms to 1.9 s, and
-  causal Transformers with a per-layer cache for streaming. 74 training runs are registered.
+  causal Transformers (so far only the plain causal variant streams, through a per-layer cache). 82 training runs
+  are registered.
 - **A pipeline harness** (`harness/`, [README](harness/README.md)): full validation benchmarks with a streaming
   timing check, paired comparisons, decode sweeps, word-commitment analyses, n-best rescoring, retraining with a
   smoke test, and a live browser player that replays a trial and speaks each word as it is committed.
