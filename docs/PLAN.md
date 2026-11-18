@@ -65,11 +65,11 @@ every CTC member were trained on all training sentences, so none of their scores
 candidate order comes from the decoder score (acoustic + 4-gram) and OPT-2.7B. Familiarity, where used, counts the
 fold model's own training sentences.
 
-**1c. Selector inputs.** Context: the live partial's words before the position (what a live system has), not the
-reference. Phonemes: the decider's greedy CTC phonemes between the previous word boundary and this one, at the
-deadline frame. Candidates: the top K (about 10-20) by decoder score, each with its lexicon pronunciation. Target: the
-reference word. About 50k decisions per deadline from the folds; one fold's sessions held out for the selector's own
-validation.
+**1c. Selector inputs.** Context: the words before the position in the decision's best candidate by decoder score
+(what a live system displays), not the reference. Phonemes: the decider's greedy CTC phonemes between the previous
+word boundary and this one. Candidates: the top 20 by decoder score (they hold nearly everything the 50 hold), each
+with its lexicon pronunciation. Target: the reference word, by minimum-edit alignment. About 50k decisions per
+deadline from the folds; fold 4 held out for the selector's own validation.
 
 **Queued (2026-11-18 16:10 UTC):** `results/harness/queue/selector_probe_20261118.py` waits for the fold models,
 then runs 1b (held-out forward passes on the GPU, lists with two CPU decoders), 1c (records) and 1d (the probe on
@@ -82,15 +82,30 @@ few examples in the same format scores the val-dev candidates; its score enters 
 DCoND's in-context result says this should help a little; if it adds nothing beyond the CTC features, the fine-tune
 has to make up the whole case.
 
-**1e. Fine-tune.** LoRA on Qwen2.5-1.5B (then 3B) with the 1c decisions (`peft` needed, an environment change),
-about 1-2 h of GPU per run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms,
-inside the 500 ms budget (may replace OPT).
+**1e. Synthetic training data (CPU, about a day of code; added 2026-11-18).** The folds give about 50k real
+decisions, of which only about 11% are words rare in training. A text corpus can supply millions: take sentences
+from the local OpenWebText sample (`results/corpus/openwebtext_2gb.fmt.txt`, 2 GB), pick a word, look up its
+pronunciation (125k-word lexicon), pass it through a phoneme noise channel estimated from the fold models' held-out
+decodes (substitution, deletion and insertion rates per phoneme, by word familiarity: never-seen words about a third
+of phonemes wrong, familiar ones about 5%), and build the candidate list the way the decoder does (the lexicon words
+nearest to the noisy phonemes, weighted by word frequency, the true word present about as often as in the real lists:
+79% for never-seen words). The selector then sees the whole 125k vocabulary, most of it never in the B2T training
+sentences. The noise channel comes from the folds only, never from val-dev. Public sets checked against this:
+HyPoradise (LLM correction of ASR n-best lists; text only, no phonemes) and phoneme recognizers run on LibriSpeech
+(audio error patterns, not this decoder's); the synthetic set matches our decoder's errors and vocabulary better, so
+it comes first, with HyPoradise-style pretraining as an option if the synthetic set alone falls short.
 
-**1f. Evaluation.** The selector's log-probability of each candidate, and its interaction with the rare flag, as
+**1f. Fine-tune.** LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
+real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
+run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms
+budget (may replace OPT).
+
+**1g. Evaluation.** The selector's log-probability of each candidate, and its interaction with the rare flag, as
 ranker features for the Y6 decider at 500 ms and 1.5 s and for D1 at 200 ms (cross-fitted by session halves, four
-splits), its time charged. Keep rule (set now): live WER at least 0.2 lower at 500 ms or 1.5 s, deadline-respecting
-no worse, on the standard split and two of three random splits. Then 1g: words the selector generates outside the
-list as extra options (the only route besides step 2 to the never-offered 40%).
+splits; `learning/selector/ranker_selector.py`), its time charged. Keep rule (set now): live WER at least 0.2 lower
+at 500 ms or 1.5 s, deadline-respecting no worse, on the standard split and two of three random splits. Then 1h:
+words the selector generates outside the list as extra options (the only route besides step 2 to the never-offered
+40%).
 
 **Stop rule.** If neither the probe nor the first fine-tune lowers live WER by 0.1 at any budget, stop and write it
 up as a negative result.
