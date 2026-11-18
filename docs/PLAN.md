@@ -95,6 +95,12 @@ HyPoradise (LLM correction of ASR n-best lists; text only, no phonemes) and phon
 (audio error patterns, not this decoder's); the synthetic set matches our decoder's errors and vocabulary better, so
 it comes first, with HyPoradise-style pretraining as an option if the synthetic set alone falls short.
 
+**Progress 2026-11-18 evening:** fold 0's held-out phoneme error by familiarity is 38.2 / 26.5 / 7.8 / 2.4
+(val-dev, Y6 average: 35.3 / 24.1 / 7.4 / 2.2), so the held-out trials do look like val-dev. The noise channel
+from fold 0 (`learning/selector/noise.py`) and the generator (`learning/selector/synth.py`) give lists with the
+right word first / in the top 20 for 44 / 74% of never-seen words (real lists 42 / 78%); a 300k-decision set is
+being generated. Re-estimate the channel from all five folds once they finish.
+
 **1f. Fine-tune.** LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
 run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms
