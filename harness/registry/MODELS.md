@@ -150,6 +150,7 @@ the old IDs.
 | A8 | A7_2 | D5 | D1_4 | Y7 | Y7_1 |
 | A9 | A7_3 | G2 | G2_1 | Y9 | Y7_2 |
 | C1 | C1_1 | G13 | G2_2 | Y14 | Y6sf0_1 |
+| Y6sf1_1 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_sf1_63k_s10` | final, avg, bestval | - | 2026-11-18 | Out-of-fold model 1 of 5 on the Y6 recipe (training sentences of fold 1 held out, 6,436 of 8,072 trials kept). Full-val PER at the final batch 10.05 (training log; Y6_1 8.89). |
 | C2 | C1_2 | G14 | G2_3 | | |
 
 Retired recipe numbers: A6, A8, A9, C2, D2, D4, D5, G13, G14, G15, Y9, Y10, Y14.
