@@ -28,6 +28,10 @@ def cmd_bench(options):
     spec = registry.resolve(options.pipeline, acoustic=options.acoustic, lm=options.lm,
                             decode=key_values(options.decode), preprocess=key_values(options.preprocess))
     common = dict(root=options.root, limit=options.limit, device=options.device, lm_python=options.lm_python)
+    if options.no_job_lock:
+        if options.tier != "standard" or not options.no_timing_check or options.device != "cpu":
+            raise SystemExit("--no-job-lock needs the standard tier, --no-timing-check and --device cpu")
+        common["job_lock"] = False
     if options.data_dir:
         common["data_dir"] = options.data_dir
     try:
@@ -131,6 +135,10 @@ def cmd_sweep(options):
         key, _, values = item.partition("=")
         grid[key.strip()] = [yaml.safe_load(v) for v in values.split(",")]
     common = dict(root=options.root, device=options.device, lm_python=options.lm_python)
+    if options.no_job_lock:
+        if options.device != "cpu":
+            raise SystemExit("--no-job-lock needs --device cpu")
+        common["job_lock"] = False
     if options.data_dir:
         common["data_dir"] = options.data_dir
     try:
@@ -206,6 +214,8 @@ def parser():
     bench.add_argument("--allow-exposed", metavar="REASON", help="Permit the former val-test scope")
     bench.add_argument("--no-timing-check", action="store_true")
     bench.add_argument("--device", default="cuda")
+    bench.add_argument("--no-job-lock", action="store_true",
+                       help="Run beside another benchmark (needs --device cpu and --no-timing-check)")
     bench.add_argument("--data-dir")
     bench.add_argument("--lm-python", default="/home/fishinjak/.miniforge3/envs/b2txt25_lm/bin/python")
     bench.set_defaults(func=cmd_bench)
@@ -248,6 +258,7 @@ def parser():
     sweep.add_argument("--lm")
     sweep.add_argument("--grid", action="append", required=True, metavar="KEY=V1,V2,...")
     sweep.add_argument("--device", default="cuda")
+    sweep.add_argument("--no-job-lock", action="store_true", help="Run beside another benchmark (needs --device cpu)")
     sweep.add_argument("--data-dir")
     sweep.add_argument("--lm-python", default="/home/fishinjak/.miniforge3/envs/b2txt25_lm/bin/python")
     sweep.set_defaults(func=cmd_sweep)

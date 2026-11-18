@@ -123,6 +123,13 @@ class BenchTests(unittest.TestCase):
             with self.assertRaises(BlockingIOError):
                 self.run_bench(limit=1, timing_check=False)
 
+    def test_no_job_lock_runs_beside_a_benchmark_cpu_untimed_only(self):
+        with flocked(lock_path(self.results, "job")):
+            run_dir = self.run_bench(limit=1, timing_check=False, job_lock=False)
+            self.assertTrue((Path(run_dir) / "summary.json").exists())
+            with self.assertRaises(ValueError):
+                self.run_bench(limit=1, timing_check=True, job_lock=False)
+
 
 class PacedTests(unittest.TestCase):
     """1x paced tier on the synthetic sample (4 short trials, about 3 s of real time)."""

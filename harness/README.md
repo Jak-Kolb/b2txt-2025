@@ -161,7 +161,8 @@ Runs never overwrite; a failed run keeps its files and a `traceback.txt`.
 
 ## Resources
 
-One benchmark at a time (`locks/job.lock`). The timing check, paced runs, and live trials
+One benchmark at a time (`locks/job.lock`), except CPU-only accuracy runs with `--no-job-lock` (bench: also
+`--no-timing-check`; sweep), which time nothing and use no GPU, so two decoders can run side by side. The timing check, paced runs, and live trials
 never overlap (`locks/paced.lock`). An LM process starts only if MemAvailable exceeds its
 expected RSS + 2 GB (the general 4-gram needs about 8.5 GB of the machine's 27 GB).
 
