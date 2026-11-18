@@ -308,6 +308,7 @@ One row per training run. "Weights" lists what is registered for the run: `final
 | Y11 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_tx_63k_s10` | final, avg, bestval | - | 2026-11-18 | Y6's recipe on the 256 threshold-crossing features only, as an ensemble member. Greedy val-dev PER 11.80 / 11.62 (Y6 8.07 / 7.95). |
 | Y12 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_sbp_63k_s10` | final, avg, bestval | - | 2026-11-18 | Y6's recipe on the 256 spike-band-power features only, as an ensemble member. Greedy val-dev PER 8.33 / 8.26. |
 | Y13 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_mask5f_63k_s10` | final, avg, bestval | - | 2026-11-18 | Y6 with Y4's time masks (at most 5 frames each). Best WER 8.03 / 8.01 at scale 0.25 (Y6 7.27 / 6.97); word ends earlier (own-boundary p95 120 vs 360 ms). Keep rule not met. |
+| Y14 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_sf0_63k_s10` | final, avg, bestval | - | 2026-11-18 | Out-of-fold model 0 of 5 on Y6's recipe (training sentences of fold 0 held out, 6,469 of 8,072 trials kept), for the selector's held-out decodes. Full-val PER at the final batch 10.07 (training log; Y6 8.89). |
 
 ### Z: Transformer, width 512, 8 layers
 
