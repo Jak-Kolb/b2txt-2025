@@ -24,6 +24,7 @@ a row below.
 | `lightbeam_reproduction_gaps_2026-11-10.md` (was part of `current_knowledge.md` 4.8) | 2026-11-10 | The two tables comparing LightBeam's public code (commit 90e0ac0) with our 2026-11-03 run, and the table of fixes prepared for the corrected recipe with its arms and read-out rules | `current_knowledge.md` 4.9 ("What the corrected recipe (v2) changed") and the Y6 / Y7 / Y8 results |
 | `transformer_pilots_2026-10-26.md` (was part of `current_knowledge.md` 4.8) | 2026-10-26 to 10-27 | Conv-Transformer block tests (Macaron, 800-batch), the 8k-batch pilot curves and the X3 training curve | `current_knowledge.md` 4.8 (summary) |
 | `transformer_tests_explanation_2026-11-10.md` (was `transformer_tests_explanation.md` in the repository root, untracked) | 2026-11-10 | Pre-run explanation of the corrected LightBeam-recipe runs (Y6-Y8) and the other prepared runs | `current_knowledge.md` 4.9, 4.10 |
+| `PLAN_sections_2026-11-10_to_11-18.md` (were sections of `docs/PLAN.md`) | 2026-11-10 to 11-18 | The 11-10 experiment list, the language-model steps L1 / L2, the follow-ups to the reproduced LightBeam model, chain 1, and the night of 11-17 | `docs/PLAN.md` "Next steps (2026-11-18)"; results in `current_knowledge.md` 4.9-4.11, 6.10, 6.11 |
 
 Not archived here:
 - `results/RESULTS.md` stays beside the run artifacts it cites (its source paths are relative to `results/`). It
