@@ -36,7 +36,7 @@ its language-model time is charged, but the two decoders have not yet been run s
 its ID is listed in [`harness/registry/MODELS.md`](harness/registry/MODELS.md): a recipe ID such as `Y6` names a
 configuration, a run ID such as `Y6_1` one training of it, and "avg" its averaged weights.
 
-No Transformer has been run through the ranker at 200 ms yet: Y6_1 marks word ends late (95th percentile 360 ms after
+No Transformer has been run through the ranker at 200 ms yet: Y6 marks word ends late (95th percentile 360 ms after
 the word). Y13, the Y6 recipe trained with shorter time masks, marks them within 120 ms but loses about a point of WER.
 
 These are on the project's validation partition of the public B2T '25 data ("val-dev": 1,253 trials, 8,277 words,
@@ -56,7 +56,7 @@ A second track on the Makin lab's ECoG dataset is intended; access and integrati
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/dark/01_live_wer_waterfall_500ms.png">
-  <img src="docs/images/light/01_live_wer_waterfall_500ms.png" alt="Waterfall chart of live word error rate at 500 ms: GRU G2_1's own words 11.16%; Transformer Y6_1 instead of the GRU -1.34; two language models choosing the word -1.69; CTC scores of an acoustic-model ensemble -0.86; word familiarity -0.22; result 7.06%.">
+  <img src="docs/images/light/01_live_wer_waterfall_500ms.png" alt="Waterfall chart of live word error rate at 500 ms: GRU G2's own words 11.16%; Transformer Y6 instead of the GRU -1.34; two language models choosing the word -1.69; CTC scores of an acoustic-model ensemble -0.86; word familiarity -0.22; result 7.06%.">
 </picture>
 
 ### GRU or Transformer, one acoustic model each
