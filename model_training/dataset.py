@@ -1,4 +1,6 @@
+import hashlib
 import os
+import re
 import torch
 from torch.utils.data import Dataset 
 import h5py
@@ -316,6 +318,15 @@ class BrainToTextDataset(Dataset):
         
         return batch_index
         
+def sentence_fold(sentence, n_folds):
+    '''Fold of a training sentence for out-of-fold models (dataset.train_fold.by = sentence): md5 of the text
+    normalized to lower-case letters and apostrophes, so every trial of a repeated sentence is in the same fold.'''
+    if isinstance(sentence, bytes):
+        sentence = sentence.decode()
+    text = ' '.join(re.sub(r"[^a-z' ]", ' ', str(sentence).lower()).split())
+    return int(hashlib.md5(text.encode()).hexdigest(), 16) % n_folds
+
+
 def train_test_split_indicies(file_paths, test_percentage = 0.1, seed = -1, bad_trials_dict = None):
     '''
     Split data from file_paths into train and test splits 

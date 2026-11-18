@@ -11,8 +11,9 @@ import logging
 import sys
 import json
 import pickle
+import h5py
 
-from dataset import BrainToTextDataset, train_test_split_indicies
+from dataset import BrainToTextDataset, sentence_fold, train_test_split_indicies
 from data_augmentations import gauss_smooth, time_mask, time_mask_per_trial, per_trial_time_spans, channel_mask
 
 import torchaudio.functional as F # for edit distance
@@ -263,13 +264,23 @@ class BrainToTextDecoder_Trainer:
             bad_trials_dict = None,
             )
 
-        # Optional fold hold-out: drop every n_folds-th training trial of each session (out-of-fold decodes of the
-        # training set need models that never saw the trials they decode)
+        # Optional fold hold-out (out-of-fold decodes of the training set need models that never saw the trials they
+        # decode): by default every n_folds-th training trial of each session; with by: sentence, every trial whose
+        # normalized sentence hashes to the held-out fold (repeated sentences stay together)
         fold = self.args['dataset'].get('train_fold')
         if fold:
+            by_sentence = fold.get('by', 'trial') == 'sentence'
             for d in train_trials:
-                train_trials[d]['trials'] = [t for t in train_trials[d]['trials'] if t % fold['n_folds'] != fold['holdout']]
-            self.logger.info(f"Holding out training fold {fold['holdout']} of {fold['n_folds']} (trial index modulo)")
+                if by_sentence:
+                    with h5py.File(train_trials[d]['session_path'], 'r') as f:
+                        keep = [t for t in train_trials[d]['trials']
+                                if sentence_fold(f[f'trial_{t:04d}'].attrs['sentence_label'], fold['n_folds']) != fold['holdout']]
+                else:
+                    keep = [t for t in train_trials[d]['trials'] if t % fold['n_folds'] != fold['holdout']]
+                train_trials[d]['trials'] = keep
+            self.logger.info(f"Holding out training fold {fold['holdout']} of {fold['n_folds']} "
+                             f"({'by sentence' if by_sentence else 'trial index modulo'}): "
+                             f"{sum(len(v['trials']) for v in train_trials.values())} training trials kept")
 
         # Optional phrase-splicing augmentation (dataset.splice_trials)
         splice = self.args['dataset'].get('splice') or {}
