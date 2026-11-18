@@ -24,8 +24,8 @@ The viewer listens on 127.0.0.1 only; from another machine, reach it through an 
 
 A pipeline is an acoustic model + preprocessing + LM graph + eight native decode settings.
 Presets live in `registry/pipelines/`; components in `registry/acoustic/` and `registry/lm/`.
-`registry/MODELS.md` explains how acoustic models are named and lists every trained model with its letter ID.
-A preset is named `<letter ID>_<LM>`: `A2_gen4g` is model A2 with the general 4-gram.
+`registry/MODELS.md` explains how acoustic models are named and lists every training run with its run ID.
+A preset is named `<recipe ID>_<LM>`: `A2_gen4g` is run A2_1 (best-validation weights) with the general 4-gram.
 Ad-hoc compositions: `bench --acoustic gru768_pall_f80_sm80_120k_s10_bestval --lm gen4g --decode acoustic_scale=0.5`.
 Preprocessing is the model's training smoothing; `--preprocess smooth_lookahead=2` is allowed
 but flagged `preprocess_mismatch`. Decode settings depend on the acoustic model; a preset

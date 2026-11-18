@@ -4,6 +4,9 @@ Archive of superseded plans, reviews, logs and memos. Nothing here is a current 
 trace a specific past decision or measurement. The current plan is `docs/PLAN.md`; current results are in
 `current_knowledge.md`, whose section 12 gives the development timeline these files belong to.
 
+Model IDs in these files are the ones in use when each was written. On 2026-11-18 seeds and retrains became runs of
+one recipe (`Y10` is now `Y6_2`, `G15` is `G2_4`); `harness/registry/MODELS.md` ("Renamed on 2026-11-18") maps them.
+
 Every file here is tracked in git. When a document is superseded, move it here (`git mv` if it is tracked) and add
 a row below.
 
