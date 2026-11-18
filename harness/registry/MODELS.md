@@ -95,6 +95,9 @@ Tags follow `f`. A smoothing tag comes first.
 | `ent12` | Entropy term, weight 0.12 |
 | `ictc4` | Intermediate CTC loss at layer 4, weight 0.3 |
 | `ls05` | Label smoothing, weight 0.05 |
+| `mask5f` | LightBeam-style time masks of at most 5 frames each (as Y4), not 5% of the trial's length |
+| `sf0`-`sf4` | Out-of-fold model: the training sentences of fold K of 5 held out (`dataset.train_fold`, by sentence), for decoding them |
+| `tx`, `sbp` | Only the 256 threshold-crossing features, or only the 256 spike-band-power features |
 | `upstream` | The released model from the dataset's authors, not trained here |
 
 A new tag gets a row here before its first run is named.
@@ -301,6 +304,10 @@ One row per training run. "Weights" lists what is registered for the run: `final
 | Y7 | `tfm384x5_lb_p20000_f160_noday_v2_63k_s10` | final, avg, bestval | - | 2026-11-11 | Corrected LightBeam recipe (v2), causal smoothing, 160 ms of attention look-ahead. |
 | Y8 | `tfm384x5_lb_p20000_f160_noday_v2_crctc_32k_s10` | final, avg, bestval | - | 2026-11-12 | Y7 + consistency-regularized CTC (weight 0.2), half the batches. Best WER 8.64 / 8.57 at scale 0.6 / 0.5 (Y7 7.44 / 7.43): keep rule not met. |
 | Y9 | `tfm384x5_lb_p20000_f160_noday_v2_63k_s11` | final, avg, bestval | - | 2026-11-16 | Second seed of Y7 (seed 11, data seed 2). Best WER 7.66 / 7.58 (Y7 7.44 / 7.43). |
+| Y10 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_63k_s11` | final, avg, bestval | - | 2026-11-17 | Second seed of Y6 (seed 11, data seed 2). Best WER 6.95 / 6.95 at scale 0.3 (Y6 7.27 / 6.97). |
+| Y11 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_tx_63k_s10` | final, avg, bestval | - | 2026-11-18 | Y6's recipe on the 256 threshold-crossing features only, as an ensemble member. Greedy val-dev PER 11.80 / 11.62 (Y6 8.07 / 7.95). |
+| Y12 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_sbp_63k_s10` | final, avg, bestval | - | 2026-11-18 | Y6's recipe on the 256 spike-band-power features only, as an ensemble member. Greedy val-dev PER 8.33 / 8.26. |
+| Y13 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_mask5f_63k_s10` | final, avg, bestval | - | 2026-11-18 | Y6 with Y4's time masks (at most 5 frames each). Best WER 8.03 / 8.01 at scale 0.25 (Y6 7.27 / 6.97); word ends earlier (own-boundary p95 120 vs 360 ms). Keep rule not met. |
 
 ### Z: Transformer, width 512, 8 layers
 

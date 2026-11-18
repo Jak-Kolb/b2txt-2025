@@ -1,0 +1,11 @@
+name: tfm384x5_lb_p20000_f80_sm80_noday_v2_tx_63k_s10_avg
+checkpoint_dir: model_training/trained_models/tfm384x5_lb_p20000_f80_sm80_noday_v2_tx_63k_s10_20261118T002635Z/snapshot_avg
+description: "Uniform weight average of the snapshots at batches [58000, 59000, 60000, 61000, 62000, 62999] of tfm384x5_lb_p20000_f80_sm80_noday_v2_tx_63k_s10 (chosen before training). 63000-batch step schedule (x0.1 at batch 37800), fixed final snapshot (batch 62999, chosen before training; no checkpoint selection); val-dev greedy PER and WER at acoustic scales 0.2 / 0.25 / 0.3 / 0.4 / 0.5 at gen4g."
+training:
+  config: results/harness/train/20261118T002635Z_tfm384x5_lb_p20000_f80_sm80_noday_v2_tx_63k_s10/config.yaml
+  log: model_training/trained_models/tfm384x5_lb_p20000_f80_sm80_noday_v2_tx_63k_s10_20261118T002635Z/training_log
+  forked_from: gru768_pall_f0_120k_s10_bestval
+  overrides: []
+selection:
+  rule: "uniform average of fixed snapshots [58000, 59000, 60000, 61000, 62000, 62999], chosen before training; no selection"
+  data: [none]

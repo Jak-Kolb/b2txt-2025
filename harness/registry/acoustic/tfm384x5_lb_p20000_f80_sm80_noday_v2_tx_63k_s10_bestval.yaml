@@ -1,0 +1,64 @@
+name: tfm384x5_lb_p20000_f80_sm80_noday_v2_tx_63k_s10_bestval
+checkpoint_dir: model_training/trained_models/tfm384x5_lb_p20000_f80_sm80_noday_v2_tx_63k_s10_20261118T002635Z/checkpoint
+description: 'Fork of gru768_pall_f0_120k_s10_bestval: Y6''s recipe on the 256 threshold-crossing
+  features only (an input-subset ensemble member). See results/harness/queue/overnight_y6_20261117.py.
+  63000-batch step schedule (x0.1 at batch 37800), fixed final snapshot (batch 62999,
+  chosen before training; no checkpoint selection); val-dev greedy PER and WER at
+  acoustic scales 0.2 / 0.25 / 0.3 / 0.4 / 0.5 at gen4g.'
+training:
+  config: results/harness/train/20261118T002635Z_tfm384x5_lb_p20000_f80_sm80_noday_v2_tx_63k_s10/config.yaml
+  log: model_training/trained_models/tfm384x5_lb_p20000_f80_sm80_noday_v2_tx_63k_s10_20261118T002635Z/training_log
+  forked_from: gru768_pall_f0_120k_s10_bestval
+  overrides:
+  - model.type=transformer
+  - model.transformer.d_model=384
+  - model.transformer.n_layers=5
+  - model.transformer.n_heads=6
+  - model.transformer.ffn_mult=4
+  - model.transformer.dropout=0.35
+  - model.transformer.window=250
+  - model.transformer.block_type=standard
+  - model.transformer.no_day_input=true
+  - model.transformer.mask_token=true
+  - dataset.data_transforms.time_mask_n=20
+  - dataset.data_transforms.time_mask_mode=per_trial_frames
+  - dataset.data_transforms.time_mask_max_frac=0.05
+  - lr_gamma=0.1
+  - lr_milestones=[37800]
+  - checkpoint_batches=[58000,59000,60000,61000,62000,62999]
+  - model.transformer.pos_bias=relative
+  - model.transformer.window_min=63
+  - ctc_length_norm=true
+  - model.transformer.embed_dropout=0.2
+  - model.transformer.ffn_dropout=true
+  - model.transformer.init=torch
+  - dataset.sampling=trials
+  - model.transformer.lookahead_frames=0
+  - lr_max=0.002
+  - lr_max_day=0.002
+  - epsilon=1e-8
+  - weight_decay=1e-5
+  - grad_norm_clip_value=100
+  - lr_scheduler_type=step
+  - num_training_batches=63000
+  - batches_per_val_step=1000
+  - model.patch_size=4
+  - model.patch_stride=4
+  - model.input_network.input_layer_dropout=0
+  - dataset.data_transforms.white_noise_std=0.2
+  - dataset.data_transforms.constant_offset_std=0.05
+  - dataset.data_transforms.random_cut=0
+  - lr_warmup_steps=1260
+  - dataset.data_transforms.smooth_lookahead=4
+  - dataset.feature_subset=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255]
+  - model.n_input_features=256
+  - dataset.neural_dim=256
+  git_head: 6c769907c40ba9b275a99c755b7b21d438e2be7c
+  git_dirty: true
+  train_dir: results/harness/train/20261118T002635Z_tfm384x5_lb_p20000_f80_sm80_noday_v2_tx_63k_s10
+selection:
+  rule: 'rnn_trainer best greedy-CTC val PER (ties: val loss) over all enabled val
+    sessions'
+  data:
+  - val-dev
+  - former-val-test
