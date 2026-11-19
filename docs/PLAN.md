@@ -138,6 +138,14 @@ contested decisions, merged adapter (28 ms). Pick accuracy 89.3% on val-dev (dec
 the 95% rule holds at both (98.7% / 99.4% of words within the budget). Kept. Gaps to 6% now 0.58 at 500 ms and 0.29 at 1.5 s. Next for the selector:
 the synthetic set and a 3B model (more rare words; it already cuts never-seen-word WER 43.0 -> 39.4), D1's decisions
 for 200 ms, and words outside the list (1h).
+**200 ms (2026-11-19):** the selector on close decisions only (`SEL_GATE=3`, 29% of contested decisions) keeps 96.0% of
+D1's words within 200 ms: full system 8.64 -> 8.36, one model 9.27 -> 8.84, on all four splits.
+**Queued 2026-11-19 afternoon, to get 500 ms and 1.5 s under 6%** (gaps 0.58 and 0.29):
+`results/harness/queue/selector_3b_20261119.py` (Qwen2.5-3B selector, D 0 and 10), then
+`selector_ideas_20261119.py`: one 1.5B model on both deadlines' decisions; the words already decoded after the decision
+word at 1.5 s; a 0.5B selector for 200 ms (faster, so more decisions can use it); 60k synthetic decisions mixed in
+(noise channel re-estimated from all five folds). Dropped: Y6_2's lists voting. With Y6_1's own look-ahead it is not
+admitted at D = 0 (a voting model needs R_M <= R_S + D - 1), and at 1.5 s a second decoder gave only 6.51 -> 6.48.
  LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
 run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms
