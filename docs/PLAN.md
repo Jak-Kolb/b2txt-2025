@@ -146,6 +146,10 @@ D1's words within 200 ms: full system 8.64 -> 8.36, one model 9.27 -> 8.84, on a
 word at 1.5 s; a 0.5B selector for 200 ms (faster, so more decisions can use it); 60k synthetic decisions mixed in
 (noise channel re-estimated from all five folds). Dropped: Y6_2's lists voting. With Y6_1's own look-ahead it is not
 admitted at D = 0 (a voting model needs R_M <= R_S + D - 1), and at 1.5 s a second decoder gave only 6.51 -> 6.48.
+**Results and next (2026-11-19 evening):** the 3B selector is the new best (6.44 / 6.22). On the 1.5B, one model for
+both deadlines and the following words at 1.5 s each helped a little; the 0.5B lost at 200 ms (8.58 vs 8.36). Queued:
+`selector_combined_20261119.py`, a 3B on both deadlines with the following words, then the synthetic-mix test again at
+batch 4 x 4 (at batch 8 its long prompts filled GPU memory and the run slowed 15x at step 3,000).
  LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
 run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms
