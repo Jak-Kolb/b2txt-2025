@@ -125,6 +125,11 @@ being generated. Re-estimate the channel from all five folds once they finish.
 (`finetune.py --contested --folds 0`), then pick accuracy on fold 4 and on val-dev against the decoder's first candidate
 (`eval_choice.py`; val-dev: decoder 85.4%, zero-shot Qwen2.5-3B 76.3%). Only if it beats the decoder there: the full
 run on folds 0-3, then 1g.
+**Result of the quick run:** pick accuracy 86.2% on val-dev against the decoder's 85.4% (fold 4: 87.8 vs 85.7). In the
+ranker, 500 ms 7.06 -> 6.75 (-0.23 to -0.31 on all four splits); with its 56 ms charged the 95% rule holds (p95 432 ms)
+but deadline-respecting WER rises 7.91 -> 8.57. 1.5 s: 6.51 -> 6.31 on the standard split only. Next: rebuild folds 1-3
+and train on folds 0-3 (about 23k contested decisions), and cut the selector's time (merged adapter, fewer options,
+scoring only close decisions, or in place of OPT at 500 ms).
  LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
 run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms
