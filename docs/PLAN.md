@@ -11,11 +11,11 @@ the CTC ensemble and familiarity reaches 4.28% (GPT-2 Large alone 5.47%; best se
 but late words then count as correct; every live number carries its mean delay; per budget, one model and the full
 system; per model at sentence end, one model and the full system. Charts and slides name recipes (Y6), not runs.
 
-**Order of work after the 2026-11-19 presentation runs:** fold model 4 reruns from scratch (its first attempt was
-stopped to free the GPU), then the selector probe (`results/harness/queue/after_presentation_20261119.sh`). Words seen fewer than five times in the
+**Order of work after the 2026-11-19 presentation runs:** fold model 4 reran from scratch (done 02:22 UTC, Y6sf4_1),
+and the selector probe is running (`results/harness/queue/after_presentation_20261119.sh`). Words seen fewer than five times in the
 training sentences are 15% of val-dev words and two thirds of the errors, and no acoustic model has improved on
 never-seen words; the overnight models of 2026-11-17 (Y6_2, Y11-Y13) did not move live WER. The work now is on the language
-side, led by a phoneme-aware word selector (step 1, started 2026-11-18; its fold models are training). The research
+side, led by a phoneme-aware word selector (step 1, started 2026-11-18; its five fold models are trained). The research
 direction remains exploratory.
 
 Models are named as in `harness/registry/MODELS.md`: recipe IDs (`Y6`) for configurations, run IDs (`Y6_1`, `Y6_2`)
@@ -60,7 +60,7 @@ acoustic match, so the selector has to add what they cannot: context and sound j
 confusions (learned from held-out errors), and words the list does not contain. Precedent (sentence end only):
 DCoND-LIFT's fine-tuned LLM reading candidates and phonemes, 8.09 -> 5.77 with ten models, 7.29 in-context only.
 
-**1a. Out-of-fold models (running since 15:56 UTC, done about 01:20 UTC 11-19).** On their own training trials models
+**1a. Out-of-fold models (done 2026-11-19 02:22 UTC: Y6sf0_1 to Y6sf4_1, full-val PER 10.05-10.17).** On their own training trials models
 have near-perfect phonemes and have seen every word, so the selector's training decisions come from models that never
 saw them: five Y6-recipe models, each without one fifth of the training sentences
 (`results/harness/queue/folds_y6_20261118.py`; `dataset.train_fold` with `by: sentence`, new 2026-11-18, because 17.6%
