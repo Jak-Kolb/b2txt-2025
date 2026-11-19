@@ -11,8 +11,9 @@ the CTC ensemble and familiarity reaches 4.28% (GPT-2 Large alone 5.47%; best se
 but late words then count as correct; every live number carries its mean delay; per budget, one model and the full
 system; per model at sentence end, one model and the full system. Charts and slides name recipes (Y6), not runs.
 
-**Order of work after the 2026-11-19 presentation runs:** fold model 4 reran from scratch (done 02:22 UTC, Y6sf4_1),
-and the selector probe is running (`results/harness/queue/after_presentation_20261119.sh`). Words seen fewer than five times in the
+**Order of work after the 2026-11-19 presentation:** fold model 4 reran (done 02:22 UTC, Y6sf4_1); the zero-shot
+selector probe ran and added nothing (1d); the fold models' lists are being rebuilt after a class-order bug (1b), then
+a quick fine-tune on a small subset decides whether the full one is worth running (1f). Words seen fewer than five times in the
 training sentences are 15% of val-dev words and two thirds of the errors, and no acoustic model has improved on
 never-seen words; the overnight models of 2026-11-17 (Y6_2, Y11-Y13) did not move live WER. The work now is on the language
 side, led by a phoneme-aware word selector (step 1, started 2026-11-18; its five fold models are trained). The research
@@ -75,6 +76,11 @@ every CTC member were trained on all training sentences, so none of their scores
 candidate order comes from the decoder score (acoustic + 4-gram) and OPT-2.7B. Familiarity, where used, counts the
 fold model's own training sentences.
 
+**Fix (2026-11-19):** the first lists were wrong: `heldout.py` saved the logits in the acoustic class order, which the
+WFST decoder misread (every phoneme as its neighbour), so the reference was in the top 20 for under 1% of decisions.
+Fixed and rebuilt from the saved logits (folds 0 and 4 first, 1-3 next); nothing had been trained on them, and the
+val-dev records and the synthetic set were not affected (`current_knowledge.md` 6.11).
+
 **1c. Selector inputs.** Context: the words before the position in the decision's best candidate by decoder score
 (what a live system displays), not the reference. Phonemes: the decider's greedy CTC phonemes between the previous
 word boundary and this one. Candidates: the top 20 by decoder score (they hold nearly everything the 50 hold), each
@@ -115,7 +121,11 @@ from fold 0 (`learning/selector/noise.py`) and the generator (`learning/selector
 right word first / in the top 20 for 44 / 74% of never-seen words (real lists 42 / 78%); a 300k-decision set is
 being generated. Re-estimate the channel from all five folds once they finish.
 
-**1f. Fine-tune.** LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
+**1f. Fine-tune.** First (2026-11-19) a quick run: LoRA on Qwen2.5-1.5B with about 4k contested decisions of fold 0
+(`finetune.py --contested --folds 0`), then pick accuracy on fold 4 and on val-dev against the decoder's first candidate
+(`eval_choice.py`; val-dev: decoder 85.4%, zero-shot Qwen2.5-3B 76.3%). Only if it beats the decoder there: the full
+run on folds 0-3, then 1g.
+ LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
 run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms
 budget (may replace OPT).
@@ -182,10 +192,11 @@ models later).
 - **Timing.** Trial ends are the dataset's (oracle endpoints). Word-end times are alignment proxies, not ground
   truth. Raw acquisition and feature extraction are outside the replay boundary. Report deadline misses and timing
   coverage; observed maxima are not hard bounds.
-- **Real-time Transformer forward pass (needed before any latency claim with a Y model).** Today the Y models are
-  replayed from outputs computed offline under the causal mask. A streaming forward pass for the relative-bias
-  Transformer (per-layer caches over the 20 s window; frame t's output leaves when frame t + R arrives), checked
-  against the offline outputs, then the harness timing check.
+- **Real-time Transformer forward pass (needed before any latency claim with a Y model).** Done for the LightBeam
+  recipe without attention look-ahead (Y6) on 2026-11-19: the streaming path caches keys and values over the 20 s
+  window, streamed logits match offline within 2.5e-5, and a paced CPU replay of `Y6_gen4g` on 2 trials passed the
+  harness equivalence check (lag p95 94 ms). Still to do before a latency claim: the harness timing check on the GPU
+  over `val-dev-sample`; and a streaming path for attention look-ahead (Y7).
 - **Normalization experiment (dormant).** Resolve preprocessing, clipping and reset provenance and amend the
   proposed variance floor (R-D1_2 / R-D3) before that treatment; see `.claude/rules/acoustic-pipeline.md`.
 
