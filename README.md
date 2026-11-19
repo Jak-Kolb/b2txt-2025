@@ -11,11 +11,6 @@ shown within 200 ms, 500 ms or 1.5 s of the moment the participant finished atte
 
 ## Status (2026-11-19)
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/dark/02_best_possible.png">
-  <img src="docs/images/light/02_best_possible.png" alt="Bar chart of the best word error rate at each time limit. Live words: 8.36% at 200 ms (mean delay 76 ms), 6.44% at 500 ms (204 ms), 6.22% at 1.5 s (993 ms). After the sentence: 4.28%, against 2.24% if the best sentence in the decoder's list were always picked. Goal: 6%.">
-</picture>
-
 | Time limit after the word ends | One model | Full system | Mean delay | Deciding model |
 |---|---|---|---|---|
 | 200 ms | 8.84% | 8.36% | 76 ms | GRU D1 (causal) |
