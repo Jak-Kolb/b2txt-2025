@@ -91,6 +91,10 @@ the top 20 by decoder score for 78% of never-seen words but first for only 42% (
 few examples in the same format scores the val-dev candidates; its score enters the cross-fitted ranker as a feature.
 DCoND's in-context result says this should help a little; if it adds nothing beyond the CTC features, the fine-tune
 has to make up the whole case.
+**Result (2026-11-19, `results/harness/queue/20261119T022309Z_selector_probe/`):** nothing added. With the probe's score
+as a ranker input, live WER is 7.06 -> 7.03 at 500 ms and 6.51 -> 6.50 at 1.5 s on the standard split, -0.02 to +0.05
+on three random session splits, and never-seen words do not move (500 ms 43.0 -> 42.8). The fine-tune (step 2) has to
+make the whole case.
 
 **1e. Synthetic training data (CPU, about a day of code; added 2026-11-18).** The folds give about 50k real
 decisions, of which only about 11% are words rare in training. A text corpus can supply millions: take sentences
