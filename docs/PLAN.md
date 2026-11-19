@@ -1,8 +1,8 @@
 # Streaming neural decoding plan — updated 2026-11-19
 
-**Where things stand (2026-11-19 afternoon):** live-word WER is 8.64 / 6.58 / 6.29% at 200 ms / 500 ms / 1.5 s on val-dev
-with one decoder (mean delay 69 / 197 / 987 ms), the last two with the fine-tuned phoneme-aware selector (step 1; 7.06 /
-6.51 without it), against a target of below 6% (`current_knowledge.md` section 0, which also holds every result and
+**Where things stand (2026-11-19 afternoon):** live-word WER is 8.36 / 6.58 / 6.29% at 200 ms / 500 ms / 1.5 s on val-dev
+with one decoder (mean delay 76 / 197 / 987 ms), all three with the fine-tuned phoneme-aware selector (step 1; at 200 ms
+only on close decisions; 8.64 / 7.06 / 6.51 without it), against a target of below 6% (`current_knowledge.md` section 0, which also holds every result and
 the ledger of what was tried). A second decoder's votes (without the selector) gave 6.77 / 6.48. The 500 ms and 1.5 s results come from the Y6_1
 average deciding the words, with word-familiarity features in the ranker. After the sentence, a learned rescorer with
 the CTC ensemble and familiarity reaches 4.28% (GPT-2 Large alone 5.47%; best sentence in the list 2.24%). Y13 reaches
