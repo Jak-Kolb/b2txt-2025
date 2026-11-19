@@ -19,8 +19,8 @@ shown within 200 ms, 500 ms or 1.5 s of the moment the participant finished atte
 | Time limit after the word ends | One model | Full system | Mean delay | Deciding model |
 |---|---|---|---|---|
 | 200 ms | 9.27% | 8.64% | 69 ms | GRU D1 (causal) |
-| 500 ms | 7.87% | 6.58% | 197 ms | Transformer Y6 |
-| 1.5 s | 7.74% | 6.29% | 987 ms | Transformer Y6 |
+| 500 ms | 7.47% | 6.58% | 197 ms | Transformer Y6 |
+| 1.5 s | 7.38% | 6.29% | 987 ms | Transformer Y6 |
 | After the sentence (not the target) | 5.06% | 4.28% | - | Transformer Y6, its 100 best sentences rescored |
 
 A live result passes its time limit when 95% of words are final within it; a correct word that arrives late still
@@ -28,12 +28,13 @@ counts as correct, and the mean delay shows the typical wait. The deciding acous
 propose candidates for the next word, and at each word's deadline a learned ranker picks one. "One model" gives the
 ranker the deciding model's own scores, two language models (fine-tuned GPT-2 Large and OPT-2.7B) and how often each
 candidate word occurs in the training sentences (the language models and the decoder under-rate rare words, which
-hold two thirds of the errors). The "full system" adds the CTC scores of an ensemble of acoustic models (11 causal
-GRUs at 200 ms and 500 ms, and at 1.5 s 22 GRUs, 3 Transformers and Y6 with three extra CTC inputs) and, at 500 ms
-and 1.5 s, a phoneme-aware selector: Qwen2.5-1.5B fine-tuned (LoRA) to pick the word from the phonemes the acoustic
-model heard and the candidates' pronunciations. It was trained on the held-out decisions of five Y6 models, each
-trained without one fifth of the training sentences, so it learned from realistic mistakes; it lowers live WER by
-0.48 at 500 ms and 0.22 at 1.5 s, with its 28 ms per word charged. After the sentence, a learned rescorer combines GPT-2 Large with the
+hold two thirds of the errors), and a phoneme-aware selector: Qwen2.5-1.5B fine-tuned (LoRA) to pick the word from
+the phonemes the acoustic model heard and the candidates' pronunciations. It was trained on the held-out decisions of
+five Y6 models, each trained without one fifth of the training sentences, so it learned from realistic mistakes; with
+its 28 ms per word charged it lowers live WER by 0.36-0.48 at 500 ms and 0.22-0.36 at 1.5 s, but at 200 ms it would
+put more than 5% of words past the limit, so it is left out there. The "full system" adds the CTC scores of an
+ensemble of acoustic models (11 causal GRUs at 200 ms and 500 ms, and at 1.5 s 22 GRUs, 3 Transformers and Y6 with
+three extra CTC inputs). It runs only with the best model that meets each limit. After the sentence, a learned rescorer combines GPT-2 Large with the
 same inputs over Y6's 100 best sentences (GPT-2 Large alone: 5.47%). The exact sentence is in that list for 89% of
 sentences, and always picking the closest one would give 2.24%, so better choosing has room left.
 
@@ -70,7 +71,7 @@ A second track on the Makin lab's ECoG dataset is intended; access and integrati
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/dark/03_gru_vs_transformer.png">
-  <img src="docs/images/light/03_gru_vs_transformer.png" alt="Bar chart of one GRU against one Transformer, each with the same language models and word familiarity: 500 ms 8.53% vs 7.87%, 1.5 s 8.36% vs 7.74%, sentence end 6.10% vs 5.47%, no time limit 5.76% vs 5.47%; at 200 ms only the GRU, 9.27%.">
+  <img src="docs/images/light/03_gru_vs_transformer.png" alt="Bar chart of one GRU against one Transformer, each with the same language models, word familiarity and phoneme-aware selector: 500 ms 8.26% vs 7.47%, 1.5 s 7.89% vs 7.38%, sentence end 6.10% vs 5.47%, no time limit 5.76% vs 5.47%; at 200 ms only the GRU, 9.27% (without the selector, which would make it late).">
 </picture>
 
 ## What this repository adds
