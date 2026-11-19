@@ -13,14 +13,14 @@ shown within 200 ms, 500 ms or 1.5 s of the moment the participant finished atte
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/dark/02_best_possible.png">
-  <img src="docs/images/light/02_best_possible.png" alt="Bar chart of the best word error rate at each time limit. Live words: 8.36% at 200 ms (mean delay 76 ms), 6.58% at 500 ms (197 ms), 6.29% at 1.5 s (987 ms). After the sentence: 4.28%, against 2.24% if the best sentence in the decoder's list were always picked. Goal: 6%.">
+  <img src="docs/images/light/02_best_possible.png" alt="Bar chart of the best word error rate at each time limit. Live words: 8.36% at 200 ms (mean delay 76 ms), 6.44% at 500 ms (204 ms), 6.22% at 1.5 s (993 ms). After the sentence: 4.28%, against 2.24% if the best sentence in the decoder's list were always picked. Goal: 6%.">
 </picture>
 
 | Time limit after the word ends | One model | Full system | Mean delay | Deciding model |
 |---|---|---|---|---|
 | 200 ms | 8.84% | 8.36% | 76 ms | GRU D1 (causal) |
-| 500 ms | 7.47% | 6.58% | 197 ms | Transformer Y6 |
-| 1.5 s | 7.38% | 6.29% | 987 ms | Transformer Y6 |
+| 500 ms | 7.47% | 6.44% | 204 ms | Transformer Y6 |
+| 1.5 s | 7.38% | 6.22% | 993 ms | Transformer Y6 |
 | After the sentence (not the target) | 5.06% | 4.28% | - | Transformer Y6, its 100 best sentences rescored |
 
 A live result passes its time limit when 95% of words are final within it; a correct word that arrives late still
@@ -35,7 +35,9 @@ its 28 ms per word charged it lowers live WER by 0.36-0.48 at 500 ms and 0.22-0.
 on close decisions (29% of them, where the two best candidates score within a margin), which keeps 96% of words in
 time and lowers WER by 0.28-0.42. The "full system" adds the CTC scores of an
 ensemble of acoustic models (11 causal GRUs at 200 ms and 500 ms, and at 1.5 s 22 GRUs, 3 Transformers and Y6 with
-three extra CTC inputs). It runs only with the best model that meets each limit. After the sentence, a learned rescorer combines GPT-2 Large with the
+three extra CTC inputs) and, at 500 ms and 1.5 s, a larger selector, Qwen2.5-3B (38 ms per word): 7.06% -> 6.44% and
+6.51% -> 6.22%, lower than the 1.5B on every session split. The full system runs only with the best model that meets
+each limit; the one-model column uses the 1.5B selector, as the GRU comparison below does. After the sentence, a learned rescorer combines GPT-2 Large with the
 same inputs over Y6's 100 best sentences (GPT-2 Large alone: 5.47%). The exact sentence is in that list for 89% of
 sentences, and always picking the closest one would give 2.24%, so better choosing has room left.
 
@@ -65,7 +67,7 @@ A second track on the Makin lab's ECoG dataset is intended; access and integrati
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/dark/01_live_wer_waterfall_500ms.png">
-  <img src="docs/images/light/01_live_wer_waterfall_500ms.png" alt="Waterfall chart of live word error rate at 500 ms: GRU G2's own words 11.16%; Transformer Y6 instead of the GRU -1.42; two language models choosing the word -1.61; word familiarity -0.27 (one model: 7.87%); CTC scores of an acoustic-model ensemble -0.81; an LLM that reads the heard phonemes -0.47; result 6.58%.">
+  <img src="docs/images/light/01_live_wer_waterfall_500ms.png" alt="Waterfall chart of live word error rate at 500 ms: GRU G2's own words 11.16%; Transformer Y6 instead of the GRU -1.42; two language models choosing the word -1.61; word familiarity -0.27 (one model: 7.87%); CTC scores of an acoustic-model ensemble -0.81; an LLM that reads the heard phonemes -0.62; result 6.44%.">
 </picture>
 
 ### GRU or Transformer, one acoustic model each
