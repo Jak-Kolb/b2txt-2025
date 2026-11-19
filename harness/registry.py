@@ -151,6 +151,15 @@ def model_ids(root=REGISTRY_DIR):
     return out
 
 
+def acoustic_ids(root=REGISTRY_DIR):
+    """Acoustic name -> ID ('Y6_1 avg'), under current and former names (saved runs keep the name of their day)."""
+    entries = load_kind("acoustic", root)
+    ids = model_ids(root)
+    out = {name: ids.get(name) for name in entries}
+    out.update({alias: ids.get(name) for alias, name in entries.aliases.items()})
+    return out
+
+
 def describe_acoustic(entries, root=REGISTRY_DIR):
     """Per acoustic entry, for the viewer: its ID (or None) and whether the live player can stream it."""
     ids = model_ids(root)

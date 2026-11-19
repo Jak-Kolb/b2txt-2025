@@ -2,9 +2,13 @@
 import { diffLegend, diffLine, el, fmt, flagBadges, getJSON, shortTime, tile } from "../ui.js";
 import { dotPlot } from "../charts.js";
 
+// Smoke runs (a few trials, flagged smoke_limited) are hidden unless asked for or already picked, as on Runs
+let showSmoke = false;
+
 export async function compareView(main, a, b) {
   const runs = await getJSON("/api/runs");
-  const complete = runs.filter((r) => r.status === "complete" && r.wer != null);
+  const complete = runs.filter((r) => r.status === "complete" && r.wer != null
+    && (showSmoke || !r.flags.includes("smoke_limited") || r.run_id === a || r.run_id === b));
   const byId = new Map(complete.map((r) => [r.run_id, r]));
   // Group runs by trial set: only runs on the identical trials (same scope hash) can be paired.
   const groups = new Map();
@@ -13,7 +17,8 @@ export async function compareView(main, a, b) {
     groups.get(r.scope.hash).push(r);
   }
   const scopeText = (r) => `${r.scope.name}${r.flags.includes("smoke_limited") ? " (smoke subset)" : ""} · ${r.scope.n_trials} trials`;
-  const runText = (r) => `${r.pipeline} · ${r.tier} · ${shortTime(r.created)} · WER ${fmt(r.wer, 2)}`;
+  const named = (r) => `${r.pipeline}${r.acoustic_id ? ` (${r.acoustic_id})` : ""}`;
+  const runText = (r) => `${named(r)} · ${r.tier} · ${shortTime(r.created)} · WER ${fmt(r.wer, 2)}`;
   const pick = (value, label) => el("select", { "aria-label": label },
     el("option", { value: "", text: `${label}…` }),
     [...groups.values()].map((group) => el("optgroup", { label: `${scopeText(group[0])} (trial set ${group[0].scope.hash.slice(0, 8)})` },
@@ -41,7 +46,11 @@ export async function compareView(main, a, b) {
   main.replaceChildren(el("h1", { text: "Compare runs" }),
     el("div", { class: "sub", text: "Paired on identical trials. Negative ΔWER means B makes fewer errors. "
       + "The interval resamples sessions; it is not seed variability, and one paired run is not a noise floor." }),
-    el("div", { class: "filters" }, selectA, selectB, go, hint), content);
+    el("div", { class: "filters" }, selectA, selectB, go,
+      el("label", {}, el("input", { type: "checkbox", checked: showSmoke, onchange: (e) => {
+        showSmoke = e.target.checked;
+        compareView(main, selectA.value || a, selectB.value || b);
+      } }), " show smoke runs"), hint), content);
   if (!a || !b) return;
   const pairA = byId.get(a), pairB = byId.get(b);
   if (pairA && pairB && pairA.scope.hash !== pairB.scope.hash) {
@@ -61,8 +70,8 @@ export async function compareView(main, a, b) {
   const ci = result.ci95 ? `95% CI [${fmt(result.ci95[0], 2)}, ${fmt(result.ci95[1], 2)}]` : "no interval";
   content.append(
     el("div", { class: "card" },
-      el("div", {}, el("strong", { text: "A  " }), runA.pipeline, "  ", flagBadges(result.flags_a)),
-      el("div", {}, el("strong", { text: "B  " }), runB.pipeline, "  ", flagBadges(result.flags_b)),
+      el("div", {}, el("strong", { text: "A  " }), named(runA), "  ", flagBadges(result.flags_a)),
+      el("div", {}, el("strong", { text: "B  " }), named(runB), "  ", flagBadges(result.flags_b)),
       el("div", { class: "sub", text: `scope ${result.scope} · ${result.scope_hash.slice(0, 8)} · ${result.ref_words} reference words` })),
     el("div", { class: "tiles" },
       tile("ΔWER (B − A)", `${result.delta_wer_points >= 0 ? "+" : ""}${fmt(result.delta_wer_points, 2)} pts`, ci),

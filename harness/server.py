@@ -110,11 +110,16 @@ def create_app(root=DEFAULT_ROOT, registry_root=registry.REGISTRY_DIR, live=None
 
     async def runs(request):
         rows = [run_row(m) for m in list_runs(root)]
+        ids = registry.acoustic_ids(registry_root)   # "Y6_1 avg" beside each full model name in the views
+        for row in rows:
+            row["acoustic_id"] = ids.get(row["acoustic"])
         return web.json_response(rows)
 
     async def run(request):
         manifest, summary, _ = load_run(run_dir(request))
-        return web.json_response(dict(manifest=manifest, summary=summary))
+        acoustic = ((manifest.get("pipeline") or {}).get("acoustic") or {}).get("name")
+        return web.json_response(dict(manifest=manifest, summary=summary,
+                                      acoustic_id=registry.acoustic_ids(registry_root).get(acoustic)))
 
     async def trials(request):
         _, _, rows = load_run(run_dir(request))

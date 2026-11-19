@@ -52,7 +52,8 @@ export async function runsView(main) {
       } });
     return el("tr", { class: "clickable", onclick: () => { location.hash = `#/run/${r.run_id}`; } },
       el("td", {}, box),
-      el("td", { title: r.run_id }, el("div", {}, el("strong", { text: r.pipeline || "–" })),
+      el("td", { title: r.run_id }, el("div", {}, el("strong", { text: r.pipeline || "–" }),
+        r.acoustic_id ? el("span", { class: "badge", title: "Model ID (harness/registry/MODELS.md)", text: r.acoustic_id }) : null),
         el("div", { class: "sub", text: `${r.acoustic} + ${r.lm} · ${r.tier} · ${shortTime(r.created)}` })),
       el("td", { class: "num", text: r.decode ? `${r.decode.acoustic_scale} / ${r.decode.blank_penalty}` : "–" }),
       el("td", { class: "num" }, el("strong", { text: fmt(r.wer, 2) })),
