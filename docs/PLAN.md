@@ -1,8 +1,9 @@
 # Streaming neural decoding plan — updated 2026-11-19
 
-**Where things stand:** live-word WER is 8.64 / 7.06 / 6.51% at 200 ms / 500 ms / 1.5 s on val-dev with one decoder,
-against a target of below 6% (`current_knowledge.md` section 0, which also holds every result and the ledger of what
-was tried); with a second decoder's votes 6.77 / 6.48 at 500 ms / 1.5 s. The 500 ms and 1.5 s results come from the Y6_1
+**Where things stand (2026-11-19 afternoon):** live-word WER is 8.64 / 6.58 / 6.29% at 200 ms / 500 ms / 1.5 s on val-dev
+with one decoder (mean delay 69 / 197 / 987 ms), the last two with the fine-tuned phoneme-aware selector (step 1; 7.06 /
+6.51 without it), against a target of below 6% (`current_knowledge.md` section 0, which also holds every result and
+the ledger of what was tried). A second decoder's votes (without the selector) gave 6.77 / 6.48. The 500 ms and 1.5 s results come from the Y6_1
 average deciding the words, with word-familiarity features in the ranker. After the sentence, a learned rescorer with
 the CTC ensemble and familiarity reaches 4.28% (GPT-2 Large alone 5.47%; best sentence in the list 2.24%). Y13 reaches
 7.67% at 200 ms but has 94.9% of its words within 200 ms, just short of the 95% rule.
@@ -130,6 +131,12 @@ ranker, 500 ms 7.06 -> 6.75 (-0.23 to -0.31 on all four splits); with its 56 ms 
 but deadline-respecting WER rises 7.91 -> 8.57. 1.5 s: 6.51 -> 6.31 on the standard split only. Next: rebuild folds 1-3
 and train on folds 0-3 (about 23k contested decisions), and cut the selector's time (merged adapter, fewer options,
 scoring only close decisions, or in place of OPT at 500 ms).
+**Result of the full run (2026-11-19, `results/harness/queue/20261119T174419Z_selector_full/`):** folds 0-3, 23k
+contested decisions, merged adapter (28 ms). Pick accuracy 89.3% on val-dev (decoder 85.4%). Ranker, time charged:
+500 ms 7.06 -> 6.58 (all four splits -0.34 to -0.48), 1.5 s 6.51 -> 6.29 (standard and two of three random splits);
+deadline-respecting WER lower at both. Kept. Gaps to 6% now 0.58 at 500 ms and 0.29 at 1.5 s. Next for the selector:
+the synthetic set and a 3B model (more rare words; it already cuts never-seen-word WER 43.0 -> 39.4), D1's decisions
+for 200 ms, and words outside the list (1h).
  LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
 run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms
