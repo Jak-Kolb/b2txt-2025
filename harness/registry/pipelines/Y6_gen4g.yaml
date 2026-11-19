@@ -1,0 +1,8 @@
+name: Y6_gen4g
+description: "Best model: Y6_1 avg (LightBeam-style Transformer, 80 ms smoothing look-ahead) + general 4-gram at its swept scale 0.3. Decoder alone 6.97% val-dev WER at sentence end; decides the 500 ms and 1.5 s live results."
+acoustic: tfm384x5_lb_p20000_f80_sm80_noday_v2_63k_s10_avg
+lm: gen4g
+decode: {acoustic_scale: 0.3}
+decode_tuned_on: {partition: val-dev, acoustic: tfm384x5_lb_p20000_f80_sm80_noday_v2_63k_s10_avg, artifact: results/harness/queue/20261111T035644Z_tfm_lbfix/status.json}
+preprocess_override: null
+live_rank: 1

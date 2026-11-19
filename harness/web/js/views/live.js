@@ -51,11 +51,35 @@ export async function liveView(main) {
   // ---- controls ---------------------------------------------------------------------------
   const status = el("span", { class: "sub", text: "Connecting…" });
   const errorBox = el("span", { class: "error" });
-  const presetSelect = el("select", {}, Object.keys(registry.pipelines).map((name) =>
-    el("option", { value: name, text: `${name}: ${registry.pipelines[name].description || ""}`.slice(0, 90) })));
-  presetSelect.value = registry.pipelines.A2_gen4g ? "A2_gen4g" : presetSelect.value;
+  // Model IDs from harness/registry/MODELS.md ("Y6_1 avg") and whether the live player can stream each model
+  const info = registry.acoustic_info || {};
+  const idOf = (name) => (info[name] && info[name].id) || null;
+  const streams = (name) => !info[name] || info[name].live;
+  const blocked = (name) => (streams(name) ? "" : ` (can't stream: ${info[name].live_reason})`);
+  const withId = (name) => (idOf(name) ? `${name} (${idOf(name)})` : name);
+
+  // Presets: the current best (live_rank in the preset file) first, each named with its model's ID
+  const presetNames = Object.keys(registry.pipelines);
+  const rankOf = (name) => registry.pipelines[name].live_rank;
+  const current = presetNames.filter((n) => rankOf(n) != null).sort((a, b) => rankOf(a) - rankOf(b));
+  const earlier = presetNames.filter((n) => rankOf(n) == null);
+  const presetOption = (name) => {
+    const p = registry.pipelines[name];
+    const id = idOf(p.acoustic);
+    return el("option", { value: name, disabled: !streams(p.acoustic), title: p.description || "",
+      text: `${name}${id ? ` · ${id}` : ""}${blocked(p.acoustic)}: ${p.description || ""}`.slice(0, 120) });
+  };
+  const presetSelect = el("select", {},
+    current.length ? el("optgroup", { label: "Current best" }, current.map(presetOption)) : null,
+    el("optgroup", { label: current.length ? "Earlier presets" : "Presets" }, earlier.map(presetOption)));
+  presetSelect.value = current[0] || (registry.pipelines.A2_gen4g ? "A2_gen4g" : presetNames[0]);
   const custom = el("input", { type: "checkbox" });
-  const acousticSelect = el("select", {}, Object.keys(registry.acoustic).map((n) => el("option", { value: n, text: n })));
+  // Custom models: full name with the ID in parentheses; models the live player cannot stream are listed but disabled
+  const acousticNames = Object.keys(registry.acoustic);
+  const acousticOption = (n) => el("option", { value: n, disabled: !streams(n), text: `${withId(n)}${blocked(n)}` });
+  const acousticSelect = el("select", {},
+    el("optgroup", { label: "Streams live" }, acousticNames.filter(streams).map(acousticOption)),
+    el("optgroup", { label: "Offline only" }, acousticNames.filter((n) => !streams(n)).map(acousticOption)));
   const lmSelect = el("select", {}, Object.keys(registry.lm).map((n) => el("option", { value: n, text: n })));
   const decodeKeys = ["acoustic_scale", "blank_penalty", "beam", "lattice_beam", "max_active", "min_active", "length_penalty", "blank_skip_thresh"];
   const decodeInputs = Object.fromEntries(decodeKeys.map((k) => [k, el("input", { type: "number", step: "any", style: "width: 80px" })]));
@@ -400,7 +424,7 @@ export async function liveView(main) {
       s.engine = event;
       const p = event.pipeline;
       const label = { loading: "Loading…", ready: "Ready", playing: "Playing" }[event.state] || "Not loaded";
-      status.textContent = `${label}${p ? ` · ${p.name} (${p.acoustic} + ${p.lm}, ac ${p.decode.acoustic_scale} / bp ${p.decode.blank_penalty})` : ""}`
+      status.textContent = `${label}${p ? ` · ${p.name} (${withId(p.acoustic)} + ${p.lm}, ac ${p.decode.acoustic_scale} / bp ${p.decode.blank_penalty})` : ""}`
         + `${p && event.lm_expected_rss_gb ? ` · LM ~${event.lm_expected_rss_gb} GB RAM` : ""}${event.message ? ` · ${event.message}` : ""}`;
       playButton.disabled = sessionButton.disabled = randomButton.disabled = event.state !== "ready";
       stopButton.disabled = event.state !== "playing";

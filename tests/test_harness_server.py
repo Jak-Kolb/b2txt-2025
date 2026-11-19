@@ -109,6 +109,7 @@ class ServerTests(AioHTTPTestCase):
         self.assertEqual((await self.client.get("/static/js/app.js")).status, 200)
         registry_view = await (await self.client.get("/api/registry")).json()
         self.assertIn("tiny_fake", registry_view["pipelines"])
+        self.assertEqual(set(registry_view["acoustic_info"]), set(registry_view["acoustic"]))
 
 
 class ImportTests(unittest.TestCase):

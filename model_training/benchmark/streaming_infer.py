@@ -101,8 +101,12 @@ class StreamingDecoder:
         if day_idx is not None:
             self.day_idx = int(day_idx)
 
-        self.day_weight = self.model.day_weights[self.day_idx].detach()
-        self.day_bias = self.model.day_biases[self.day_idx].detach().squeeze(0)
+        # Models without session-specific input layers (no_day_input) patch the smoothed bins directly, as their
+        # offline front_end does.
+        self.no_day_input = bool(getattr(self.model, "no_day_input", False))
+        if not self.no_day_input:
+            self.day_weight = self.model.day_weights[self.day_idx].detach()
+            self.day_bias = self.model.day_biases[self.day_idx].detach().squeeze(0)
         self.zero_raw = torch.zeros(self.feature_dim, dtype=torch.float32, device=self.device)
 
         # C1 — a preallocated circular [K, C] window replaces the (index, tensor) deque and its
@@ -242,7 +246,10 @@ class StreamingDecoder:
         return self.kernel_rot[self.window_pos] @ self.raw_window
 
     def _consume_smoothed_bin(self, smoothed: torch.Tensor) -> List[torch.Tensor]:
-        transformed = self.model.day_layer_activation(smoothed @ self.day_weight + self.day_bias)
+        if self.no_day_input:
+            transformed = smoothed
+        else:
+            transformed = self.model.day_layer_activation(smoothed @ self.day_weight + self.day_bias)
         if getattr(self.model, "input_bottleneck", 0):
             transformed = self.model.input_compress(transformed)
 

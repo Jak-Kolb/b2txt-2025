@@ -6,7 +6,9 @@ train/inference mismatch is explicit rather than silent.
 """
 from __future__ import annotations
 
+import functools
 from pathlib import Path
+import re
 
 import yaml
 
@@ -23,7 +25,7 @@ KINDS = {
     "lm": ({"name", "graph_dir", "default_decode"},
            {"description", "expected_rss_gb", "default_decode_tuned_on"}),
     "pipelines": ({"name", "acoustic", "lm"},
-                  {"description", "decode", "decode_tuned_on", "preprocess_override", "aliases"}),
+                  {"description", "decode", "decode_tuned_on", "preprocess_override", "aliases", "live_rank"}),
     "rescorer": ({"name", "model", "nbest", "weights", "tuned_on"}, {"description"}),
 }
 
@@ -107,6 +109,69 @@ def trained_preprocess(saved_args):
 def streaming_capable(preprocess):
     """Mirrors StreamingDecoder: smoothing needs an explicit (causal) lookahead."""
     return not preprocess["smooth_data"] or preprocess["smooth_lookahead"] is not None
+
+
+def live_streamable(saved_args):
+    """(True, None) when the live player can stream this model bin by bin, else (False, reason). Mirrors
+    StreamingDecoder and TransformerDecoder.stream_step."""
+    model = saved_args["model"]
+    transformer = model.get("transformer") or {}
+    if not streaming_capable(trained_preprocess(saved_args)):
+        return False, "symmetric smoothing"
+    if model.get("bidirectional"):
+        return False, "bidirectional"
+    if model.get("type") == "transformer":
+        if transformer.get("lookahead_frames"):
+            return False, "attention look-ahead, no streaming path yet"
+        if transformer.get("block_type", "standard") != "standard":
+            return False, "convolution blocks, no streaming path yet"
+        if transformer.get("shared_input"):
+            return False, "shared input layer, no streaming path yet"
+    return True, None
+
+
+MODEL_ROW = re.compile(r"^\| ([A-Z][0-9a-z]*_\d+) \| `([^`]+)` \| ([^|]*) \|")
+
+
+def model_ids(root=REGISTRY_DIR):
+    """Registry name -> the model's ID as MODELS.md writes it: 'Y6_1' (final snapshot), 'Y6_1 avg', 'G2_1 bestval'.
+    Read from the "All trained models" tables (run ID, full name, registered weights)."""
+    path = Path(root) / "MODELS.md"
+    out = {}
+    for line in path.read_text().splitlines() if path.exists() else ():
+        match = MODEL_ROW.match(line)
+        if not match:
+            continue
+        run, name, weights = match.groups()
+        for weight in (w.strip() for w in weights.split(",")):
+            if weight == "final":
+                out[name] = run
+            elif weight and weight != "-":
+                out[f"{name}_{weight}"] = f"{run} {weight}"
+    return out
+
+
+def describe_acoustic(entries, root=REGISTRY_DIR):
+    """Per acoustic entry, for the viewer: its ID (or None) and whether the live player can stream it."""
+    ids = model_ids(root)
+    out = {}
+    for name, entry in entries.items():
+        try:
+            live, reason = live_streamable(_saved_args(repo_path(entry["checkpoint_dir"])))
+        except (FileNotFoundError, KeyError) as error:
+            live, reason = False, f"saved args unreadable ({type(error).__name__})"
+        out[name] = dict(id=ids.get(name), live=live, live_reason=reason)
+    return out
+
+
+def _saved_args(checkpoint_dir):
+    path = Path(checkpoint_dir) / "args.yaml"
+    return _saved_args_cached(str(path), path.stat().st_mtime_ns)
+
+
+@functools.lru_cache(maxsize=512)
+def _saved_args_cached(path, _mtime_ns):
+    return yaml.safe_load(Path(path).read_text())
 
 
 def resolve(pipeline=None, *, acoustic=None, lm=None, decode=None, preprocess=None,

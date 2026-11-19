@@ -209,6 +209,8 @@ def create_app(root=DEFAULT_ROOT, registry_root=registry.REGISTRY_DIR, live=None
 
     async def registry_view(_):
         entries = registry.load_all(registry_root)
+        # per acoustic model: its ID from MODELS.md ("Y6_1 avg") and whether the live player can stream it
+        entries["acoustic_info"] = registry.describe_acoustic(entries["acoustic"], registry_root)
         return web.json_response(entries)
 
     app.router.add_get("/", index)

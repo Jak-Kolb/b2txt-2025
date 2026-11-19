@@ -202,6 +202,13 @@ ID is part of a name; the preset file gives the model's full name and so fixes t
 | `A4_gen4g` | `gru768_pall_f0_daylr_120k_s10_bestval` | general 4-gram | own sweep | `g3_gen4g` |
 | `A5_gen4g` | `gru768_pall_f0_bwmatch_120k_s10_bestval` | general 4-gram | own sweep | `rd1a_gen4g` |
 | `Z1_gen4g` | `tfm512x8_p5120_f0_120k_s10_bestval` | general 4-gram | own sweep | `tfm_gen4g` |
+| `Y6_gen4g` | `tfm384x5_lb_p20000_f80_sm80_noday_v2_63k_s10_avg` (Y6_1 avg) | general 4-gram | own sweep (scale 0.3) | - |
+| `D1_gen4g` | `gru1344_pall_f0_20k_s10` (D1_1) | general 4-gram | language-model defaults (tuned on A2_1) | - |
+| `G2_gen4g` | `gru1344_head256_pall_f160_20k_s10` (G2_1) | general 4-gram | language-model defaults (tuned on A2_1) | - |
+
+`Y6_gen4g`, `D1_gen4g` and `G2_gen4g` (2026-11-19) carry `live_rank` 1-3: the live player lists them first, as the
+current best (Y6 decides the 500 ms and 1.5 s live results, D1 the 200 ms ones, G2 is the GRU baseline). The viewer
+shows every model's ID next to its full name, read from the tables below.
 
 Most benchmarks do not use a preset of their own: they start from `A2_gen4g` and swap the model
 (`bench A2_gen4g --acoustic <full name>`), and the run is then named `<full name>+gen4g`.

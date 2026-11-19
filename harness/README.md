@@ -71,6 +71,12 @@ electrode traces, the greedy phoneme stream, partial and final text beside the r
 (hidden in blind mode; the engine never sees it), and frame processing lag. Speeds other than
 1x, or playback during a benchmark, are labeled display only.
 
+The preset list opens with the current best (presets with `live_rank`: `Y6_gen4g`, `D1_gen4g`, `G2_gen4g`), then the
+earlier presets. Models appear by full name with their ID from `registry/MODELS.md` in parentheses ("Y6_1 avg"); models
+the streaming decoder cannot run (attention look-ahead, convolution blocks, bidirectional, symmetric smoothing) are
+listed but disabled, with the reason. The live text is the WFST decoder's output alone: the LLM ranker, the CTC ensemble
+and word familiarity of the live-word results (`learning/live_eval/`) are offline replays and do not run here.
+
 "Speak words aloud" reads the decoded words through the browser's speech synthesis, so the audio plays on
 the machine showing the page. A word is spoken once the clock-A commit rule finalizes it (`sil+1`: 80 ms
 after the model's own greedy word boundary; `sil+13`: 1.04 s; or the whole sentence at trial end), and the

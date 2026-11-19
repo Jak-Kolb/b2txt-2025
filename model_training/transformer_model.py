@@ -145,12 +145,12 @@ class TransformerDecoder(nn.Module):
     parameter group) with per-session biases kept, instead of a matrix per session. No streaming path yet
     (streaming_infer reads day_weights).
     no_day_input: no session-specific parameters at all (LightBeam, Feghhi et al. 2026): no day matrix, bias or
-    softsign; patches go through a LayerNorm-Linear-LayerNorm embedding. No streaming path yet.
+    softsign; patches go through a LayerNorm-Linear-LayerNorm embedding. Streams (StreamingDecoder skips the day layer).
     inter_ctc_layer k > 0: in training mode forward returns (logits, intermediate logits), the latter from the output
     of block k through the shared final_norm and out layer (intermediate CTC, Lee & Watanabe 2021); the trainer
     weights the two CTC losses (model.transformer.inter_ctc_weight). Eval mode returns logits only.
     pos_bias 'relative': a learned bias per layer and relative distance (clamped to +-(max_rel_dist - 1)), shared by
-    all heads, N(0, 1) init, in place of ALiBi (the LightBeam code's T5-style bias). No streaming path yet.
+    all heads, N(0, 1) init, in place of ALiBi (the LightBeam code's T5-style bias). Streams like ALiBi.
     window_min W > 0: in training mode each forward draws its attention window uniformly from [W, window] patch
     frames (LightBeam samples 5-20 s of left context per batch); eval mode always uses window.
     embed_dropout: dropout rate on the frame embeddings entering the first block (default: dropout). LightBeam drops
@@ -368,20 +368,20 @@ class TransformerDecoder(nn.Module):
             raise NotImplementedError("No streaming path for the look-ahead Transformer yet")
         if self.block_type != 'standard':
             raise NotImplementedError("No streaming path for convolution blocks yet")
-        if self.no_day_input:
-            raise NotImplementedError("No streaming path without a day input layer yet")
-        if self.pos_bias != 'alibi':
-            raise NotImplementedError("No streaming path for the learned relative bias yet")
         h = self.input_proj(patch)
         keep = self.window - 1
         new_cache = []
-        for layer, kv in zip(self.layers, cache):
+        for i, (layer, kv) in enumerate(zip(self.layers, cache)):
             q, k, v = layer.attn.split(layer.norm1(h))
             if kv is not None:
                 k = torch.cat((kv[0], k), dim=2)
                 v = torch.cat((kv[1], v), dim=2)
+            # query minus key position for each cached key (0 = the newest frame), as attention_bias's offset
             distance = torch.arange(k.shape[2] - 1, -1, -1, device=h.device)
-            bias = (-self.slopes[:, None] * distance[None, :])[None, :, None, :]
+            if self.pos_bias == 'relative':
+                bias = self.relative_bias(distance, i)[None, None, None, :]
+            else:
+                bias = (-self.slopes[:, None] * distance[None, :])[None, :, None, :]
             h = h + layer.attn.merge(F.scaled_dot_product_attention(q, k, v, attn_mask=bias.to(q.dtype)))
             h = h + layer.ffn(layer.norm2(h))
             new_cache.append((k[:, :, -keep:], v[:, :, -keep:]) if keep > 0 else None)

@@ -44,6 +44,29 @@ class TransformerTests(unittest.TestCase):
             self.assertEqual(streamed.shape, offline.shape)
             torch.testing.assert_close(streamed, offline, atol=1e-5, rtol=1e-4)
 
+    def test_lightbeam_style_streaming_matches_offline(self):
+        # Y6's configuration: no session input layer, learned relative bias, centred smoothing (reads ahead);
+        # window 5 < the trial's frames exercises cache truncation, max_rel_dist 3 < window the bias clamp
+        from model_training.transformer_model import TransformerDecoder
+        for patch, stride, lookahead in ((3, 2, 2), (4, 4, 4)):
+            torch.manual_seed(0)
+            cfg = args(window=5, lookahead=lookahead, no_day_input=True, pos_bias="relative")
+            cfg["model"].update(patch_size=patch, patch_stride=stride)
+            cfg["dataset"]["data_transforms"].update(smooth_kernel_size=100, smooth_kernel_std=2.0)   # Y6's smoothing
+            # built directly: build_model does not pass max_rel_dist (every trained model used the default 200)
+            model = TransformerDecoder(4, 2, 5, d_model=16, n_layers=2, n_heads=2, ffn_mult=2, dropout=0.0,
+                                       patch_size=patch, patch_stride=stride, window=5, no_day_input=True,
+                                       pos_bias="relative", max_rel_dist=3).eval()
+            with torch.no_grad():
+                model.rel_bias.normal_()      # distinct bias per layer and distance
+            streamed = run_streaming_trial(model, cfg, torch.device("cpu"), self.features, 1,
+                                           enable_timing=False)["logits"]
+            with torch.inference_mode():
+                offline = offline_logits(model, torch.from_numpy(self.features).unsqueeze(0), 1, cfg,
+                                         torch.device("cpu"))[0]
+            self.assertEqual(streamed.shape, offline.shape)
+            torch.testing.assert_close(streamed, offline, atol=1e-5, rtol=1e-4)
+
     def test_causal_and_padding_safe(self):
         model, _ = self.model(window=64)
         x = torch.from_numpy(self.features).unsqueeze(0)
@@ -256,8 +279,6 @@ class TransformerTests(unittest.TestCase):
             # the front end is plain patching of the input
             torch.testing.assert_close(model.front_end(x, torch.tensor([0])),
                                        x.unfold(1, 3, 2).permute(0, 1, 3, 2).flatten(2))
-            with self.assertRaises(NotImplementedError):
-                model.stream_step(torch.zeros(1, 1, 12), model.initial_state())
         with self.assertRaises(ValueError):
             TransformerDecoder(4, 3, 5, d_model=16, n_layers=2, n_heads=2, no_day_input=True, shared_input=True)
 
@@ -316,8 +337,6 @@ class TransformerTests(unittest.TestCase):
             self.assertTrue(bool((x.grad[0, last + 1:] == 0).all()))
             self.assertTrue(bool((x.grad[0, last] != 0).any()))
             self.assertTrue(bool((model.rel_bias.grad != 0).any()))
-        with self.assertRaises(NotImplementedError):
-            TransformerDecoder(4, 3, 5, **kw).eval().stream_step(torch.zeros(1, 1, 12), [None, None])
         with self.assertRaises(ValueError):
             TransformerDecoder(4, 3, 5, d_model=16, n_layers=2, n_heads=2, pos_bias="sinusoidal")
 
