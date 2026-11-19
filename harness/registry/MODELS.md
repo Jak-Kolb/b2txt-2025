@@ -150,7 +150,6 @@ the old IDs.
 | A8 | A7_2 | D5 | D1_4 | Y7 | Y7_1 |
 | A9 | A7_3 | G2 | G2_1 | Y9 | Y7_2 |
 | C1 | C1_1 | G13 | G2_2 | Y14 | Y6sf0_1 |
-| Y6sf1_1 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_sf1_63k_s10` | final, avg, bestval | - | 2026-11-18 | Out-of-fold model 1 of 5 on the Y6 recipe (training sentences of fold 1 held out, 6,436 of 8,072 trials kept). Full-val PER at the final batch 10.05 (training log; Y6_1 8.89). |
 | C2 | C1_2 | G14 | G2_3 | | |
 
 Retired recipe numbers: A6, A8, A9, C2, D2, D4, D5, G13, G14, G15, Y9, Y10, Y14.
@@ -334,6 +333,9 @@ One row per training run, grouped by recipe. "Weights" lists what is registered 
 | Y6_1 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_63k_s10` | final, avg, bestval | - | 2026-11-11 | Corrected LightBeam recipe (v2) with their centred smoothing, no attention look-ahead. Reproduction control. |
 | Y6_2 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_63k_s11` | final, avg, bestval | - | 2026-11-17 | Second run of Y6 (seed 11, data seed 2). Best WER 6.95 / 6.95 at scale 0.3 (Y6_1 7.27 / 6.97). |
 | Y6sf0_1 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_sf0_63k_s10` | final, avg, bestval | - | 2026-11-18 | Out-of-fold model 0 of 5 on the Y6 recipe (training sentences of fold 0 held out, 6,469 of 8,072 trials kept), for the selector's held-out decodes. Full-val PER at the final batch 10.07 (training log; Y6_1 8.89). |
+| Y6sf1_1 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_sf1_63k_s10` | final, avg, bestval | - | 2026-11-18 | Out-of-fold model 1 of 5 on the Y6 recipe (training sentences of fold 1 held out, 6,436 of 8,072 trials kept). Full-val PER at the final batch 10.05 (training log; Y6_1 8.89). |
+| Y6sf2_1 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_sf2_63k_s10` | final, avg, bestval | - | 2026-11-18 | Out-of-fold model 2 of 5 on the Y6 recipe (training sentences of fold 2 held out, 6,456 of 8,072 trials kept). Full-val PER at the final batch 10.17 (training log; Y6_1 8.89). |
+| Y6sf3_1 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_sf3_63k_s10` | final, avg, bestval | - | 2026-11-18 | Out-of-fold model 3 of 5 on the Y6 recipe (training sentences of fold 3 held out, 6,497 of 8,072 trials kept). Full-val PER at the final batch 10.11 (training log; Y6_1 8.89). Fold 4's first attempt (2026-11-18 23:24) was stopped at batch 22,600 of 63,000 on 2026-11-19 to free the GPU for the presentation runs; it reruns from scratch afterwards. |
 | Y7_1 | `tfm384x5_lb_p20000_f160_noday_v2_63k_s10` | final, avg, bestval | - | 2026-11-11 | Corrected LightBeam recipe (v2), causal smoothing, 160 ms of attention look-ahead. |
 | Y7_2 | `tfm384x5_lb_p20000_f160_noday_v2_63k_s11` | final, avg, bestval | - | 2026-11-16 | Second run of Y7 (seed 11, data seed 2). Best WER 7.66 / 7.58 (Y7_1 7.44 / 7.43). |
 | Y8_1 | `tfm384x5_lb_p20000_f160_noday_v2_crctc_32k_s10` | final, avg, bestval | - | 2026-11-12 | Y7_1 + consistency-regularized CTC (weight 0.2), half the batches. Best WER 8.64 / 8.57 at scale 0.6 / 0.5 (Y7_1 7.44 / 7.43): keep rule not met. |

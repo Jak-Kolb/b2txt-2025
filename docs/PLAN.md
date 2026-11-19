@@ -1,9 +1,18 @@
-# Streaming neural decoding plan — updated 2026-11-18
+# Streaming neural decoding plan — updated 2026-11-19
 
 **Where things stand:** live-word WER is 8.64 / 7.06 / 6.51% at 200 ms / 500 ms / 1.5 s on val-dev with one decoder,
 against a target of below 6% (`current_knowledge.md` section 0, which also holds every result and the ledger of what
 was tried); with a second decoder's votes 6.77 / 6.48 at 500 ms / 1.5 s. The 500 ms and 1.5 s results come from the Y6_1
-average deciding the words, with word-familiarity features in the ranker. Words seen fewer than five times in the
+average deciding the words, with word-familiarity features in the ranker. After the sentence, a learned rescorer with
+the CTC ensemble and familiarity reaches 4.28% (GPT-2 Large alone 5.47%; best sentence in the list 2.24%). Y13 reaches
+7.67% at 200 ms but has 94.9% of its words within 200 ms, just short of the 95% rule.
+
+**Reporting (2026-11-19, `current_knowledge.md` 1.4):** a budget is met when 95% of words are final within it; correct
+but late words then count as correct; every live number carries its mean delay; per budget, one model and the full
+system; per model at sentence end, one model and the full system. Charts and slides name recipes (Y6), not runs.
+
+**Order of work after the 2026-11-19 presentation runs:** fold model 4 reruns from scratch (its first attempt was
+stopped to free the GPU), then the selector probe (`results/harness/queue/after_presentation_20261119.sh`). Words seen fewer than five times in the
 training sentences are 15% of val-dev words and two thirds of the errors, and no acoustic model has improved on
 never-seen words; the overnight models of 2026-11-17 (Y6_2, Y11-Y13) did not move live WER. The work now is on the language
 side, led by a phoneme-aware word selector (step 1, started 2026-11-18; its fold models are training). The research
