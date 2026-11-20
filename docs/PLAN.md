@@ -1,8 +1,8 @@
 # Streaming neural decoding plan — updated 2026-11-19
 
-**Where things stand (2026-11-20 evening):** live-word WER is 8.06 / 6.39 / **5.96%** at 200 ms / 500 ms / 1.5 s on val-dev
-with one decoder (mean delay 78 / 203 / 1,148 ms; 1.5 s now commits 12 steps after the word end, not 10: the first
-result under 6%, on the standard split; mean of four splits 6.06), all three with the fine-tuned Qwen2.5-3B phoneme-aware selector (step
+**Where things stand (2026-11-20 evening):** live-word WER is 8.06 / 6.39 / **5.99%** at 200 ms / 500 ms / 1.5 s on val-dev
+with one decoder (mean delay 78 / 203 / 1,227 ms; 1.5 s now commits 13 steps after the word end, not 10, the longest
+wait inside the 95% rule: the first result under 6%, on the standard split; mean of four splits 6.07), all three with the fine-tuned Qwen2.5-3B phoneme-aware selector (step
 1; at 200 ms on close decisions only; 8.64 / 7.06 / 6.51 without it), against a target of below 6% (`current_knowledge.md` section 0, which also holds every result and
 the ledger of what was tried). A second decoder's votes (without the selector) gave 6.77 / 6.48. The 500 ms and 1.5 s results come from the Y6_1
 average deciding the words, with word-familiarity features in the ranker. After the sentence, a learned rescorer with
@@ -201,6 +201,10 @@ the longest wait inside the 95% rule becomes the 1.5 s rule, fixed before the D 
 block), V1 (512 wide, 6 layers), two runs each (seeds as Y6_1 / Y6_2), about 19 h with decoding, done around midday
 2026-11-21. Rule set before training (recipe means, average weights): into the live pipeline if best 4-gram WER
 <= 6.66 (Y6 6.96 - 0.3), or never-seen-word phoneme error <= 32.75 (Y6 35.75 - 3) with WER <= 7.06.
+**(a) result (18:10 EST):** D 13 keeps 97.5% of words within 1.5 s and gives 5.99 (5.99 / 6.10 / 6.05 / 6.15, mean
+6.07; without the selector 6.49); D 14 keeps only 92.5% (fails; 6.05). By the rule fixed beforehand the 1.5 s rule is
+D 13: 5.99, mean delay 1,227 ms (D 12 gave 5.96 / mean 6.06, not used: choosing it for its WER would be selection on
+val-dev). README, charts 06 and 12 updated.
  LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
 run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms
