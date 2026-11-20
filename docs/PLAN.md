@@ -1,7 +1,8 @@
 # Streaming neural decoding plan — updated 2026-11-19
 
-**Where things stand (2026-11-20 morning):** live-word WER is 8.06 / 6.39 / 6.07% at 200 ms / 500 ms / 1.5 s on val-dev
-with one decoder (mean delay 78 / 203 / 992 ms), all three with the fine-tuned Qwen2.5-3B phoneme-aware selector (step
+**Where things stand (2026-11-20 evening):** live-word WER is 8.06 / 6.39 / **5.96%** at 200 ms / 500 ms / 1.5 s on val-dev
+with one decoder (mean delay 78 / 203 / 1,148 ms; 1.5 s now commits 12 steps after the word end, not 10: the first
+result under 6%, on the standard split; mean of four splits 6.06), all three with the fine-tuned Qwen2.5-3B phoneme-aware selector (step
 1; at 200 ms on close decisions only; 8.64 / 7.06 / 6.51 without it), against a target of below 6% (`current_knowledge.md` section 0, which also holds every result and
 the ledger of what was tried). A second decoder's votes (without the selector) gave 6.77 / 6.48. The 500 ms and 1.5 s results come from the Y6_1
 average deciding the words, with word-familiarity features in the ranker. After the sentence, a learned rescorer with
@@ -188,6 +189,12 @@ below the better single run (<= 6.65). If it passes, two more Y6 runs (about 110
 Result: not passed. Best 6.84 (mean of the logits, scale 0.35; controls 6.97 / 6.95). The runs share most errors, so
 more seeds of the same recipe will not buy much.
 Training a new acoustic recipe is last: recipe changes have not moved live WER since October.
+**Result (17:13 EST):** (1) 1.5 s at D 12 with the combined 3B: **5.96** (5.96 / 6.09 / 6.07 / 6.11, mean 6.06; D 10 6.07 /
+6.10 / 6.02 / 6.26, mean 6.11), 98.9% of words within 1.5 s, mean delay 1,148 ms; without the selector 6.46 (D 10
+6.51). Adopted. With conf4 at D 12: 5.99 (mean 6.10). 500 ms at D 1: 6.37 (mean 6.41, D 0's 6.39 / 6.41) with 95.0%
+of words in time (p95 499 ms): a tie at the rule's edge, so 500 ms stays at D 0. (2) not passed (above).
+Next at 1.5 s: D 13 / 14 may also keep 95% in time with the full system (98.9% at D 12). Next at 500 ms: the Transformer
+architecture changes (shorter attention window, causal conv module, size), proposed, waiting for the user.
  LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
 run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms

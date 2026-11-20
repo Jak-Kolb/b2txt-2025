@@ -9,36 +9,38 @@ unchanged.
 shown within 200 ms, 500 ms or 1.5 s of the moment the participant finished attempting it. Whole-sentence
 (bidirectional) acoustic models are excluded, and rescoring after the sentence ends does not count.
 
-## Status (2026-11-19)
+## Status (2026-11-20)
 
 | Time limit after the word ends | One model | Full system | Mean delay | Deciding model |
 |---|---|---|---|---|
 | 200 ms | 8.64% | 8.06% | 78 ms | GRU D1 (causal) |
 | 500 ms | 7.42% | 6.39% | 203 ms | Transformer Y6 |
-| 1.5 s | 7.15% | 6.07% | 992 ms | Transformer Y6 |
+| 1.5 s | 7.15% | 5.96% | 1,148 ms | Transformer Y6 |
 | After the sentence (not the target) | 5.06% | 4.28% | - | Transformer Y6, its 100 best sentences rescored |
 
 A live result passes its time limit when 95% of words are final within it; a correct word that arrives late still
 counts as correct, and the mean delay shows the typical wait. The deciding acoustic model and its 4-gram decoder
 propose candidates for the next word, and at each word's deadline a learned ranker picks one. "One model" gives the
 ranker the deciding model's own scores, two language models (fine-tuned GPT-2 Large and OPT-2.7B) and how often each
-candidate word occurs in the training sentences (the language models and the decoder under-rate rare words, which
-hold two thirds of the errors), and a phoneme-aware selector: Qwen2.5-3B fine-tuned (LoRA) to pick the word from
-the phonemes the acoustic model heard and the candidates' pronunciations. It was trained on the held-out decisions of
-five Y6 models, each trained without one fifth of the training sentences, so it learned from realistic mistakes; with
-its 38 ms per word charged it lowers Y6's live WER by 0.45-0.58 at 500 ms and 0.59-0.68 at 1.5 s over the four session
+candidate word occurs in the training sentences (the language models and the decoder under-rate rare words, which hold
+two thirds of the errors), and a phoneme-aware selector: Qwen2.5-3B fine-tuned (LoRA) to pick the word from the
+phonemes the acoustic model heard and the candidates' pronunciations. It was trained on the held-out decisions of five
+Y6 models, each trained without one fifth of the training sentences, so it learned from realistic mistakes; with its
+38 ms per word charged it lowers Y6's live WER by 0.45-0.58 at 500 ms and 0.59-0.68 at 1.5 s over the four session
 splits (Qwen2.5-1.5B: 0.36-0.48 and 0.22-0.36). At 200 ms it runs only on close decisions (29% of them, where the two
-best candidates score within a margin), which keeps 95.2% of D1's words in time and lowers WER by 0.49-0.63. The
-"full system" adds the CTC scores of an ensemble of acoustic models (11 causal GRUs at 200 ms and 500 ms, and at 1.5 s
-22 GRUs, 3 Transformers and Y6 with three extra CTC inputs) and a stronger 3B selector, one per limit. At 1.5 s it is
-trained on both deadlines' decisions together and also sees the words already decoded after the one being chosen
-(40 ms per word): 6.51% -> 6.07%, lower than the separate 3B (6.22%) on all four session splits. At 200 ms and 500 ms
-the same recipe with 60k synthetic decisions and 25% more real ones added (39 ms per word): 8.06% at 200 ms (8.12%
-before, all four splits lower) and 7.06% -> 6.39% at 500 ms; at 1.5 s that version is worse (6.10%). The full system
-runs only with the best model that meets each limit, and each limit loads one selector. After the sentence, a
-learned rescorer combines GPT-2 Large with the
-same inputs over Y6's 100 best sentences (GPT-2 Large alone: 5.47%). The exact sentence is in that list for 89% of
-sentences, and always picking the closest one would give 2.24%, so better choosing has room left.
+best candidates score within a margin), which keeps 95.2% of D1's words in time and lowers WER by 0.49-0.63. The "full
+system" adds the CTC scores of an ensemble of acoustic models (11 causal GRUs at 200 ms and 500 ms, and at 1.5 s 22
+GRUs, 3 Transformers and Y6 with three extra CTC inputs) and a stronger 3B selector, one per limit. At 1.5 s it is
+trained on both deadlines' decisions together and also sees the words already decoded after the one being chosen (40
+ms per word): 6.51% -> 6.07%, lower than the separate 3B (6.22%) on all four session splits. Committing 12 steps (960
+ms) after the word end instead of 10, the longest wait that keeps 95% of words within 1.5 s (98.9% are), gives 5.96%,
+the first result under 6% (6.46% without the selector). Over four session splits it is 6.06% on average (6.11% at 10
+steps), lower on three, so it is under 6% on the standard split only. At 200 ms and 500 ms the same recipe with 60k
+synthetic decisions and 25% more real ones added (39 ms per word): 8.06% at 200 ms (8.12% before, all four splits
+lower) and 7.06% -> 6.39% at 500 ms; at 1.5 s that version is worse (6.10%). The full system runs only with the best
+model that meets each limit, and each limit loads one selector. After the sentence, a learned rescorer combines GPT-2
+Large with the same inputs over Y6's 100 best sentences (GPT-2 Large alone: 5.47%). The exact sentence is in that list
+for 89% of sentences, and always picking the closest one would give 2.24%, so better choosing has room left.
 
 D1 is a causal 1,344-unit GRU. Y6 is a 9.7M-parameter Transformer trained with the LightBeam recipe (Feghhi et al.
 2026) with 80 ms of look-ahead. Each result comes from one training run of the recipe named; every run is listed in
