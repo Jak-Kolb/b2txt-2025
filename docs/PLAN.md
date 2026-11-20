@@ -155,6 +155,11 @@ mean 6.29 -> 6.11, all four lower), 500 ms 6.44 -> 6.40 (mean 6.49 -> 6.45). The
 as much as the other two ideas (means 6.65 -> 6.60 at 500 ms, 6.38 -> 6.30 at 1.5 s). Gaps to 6%: 0.07 at 1.5 s (about
 6 words of 8,277), 0.40 at 500 ms. Next candidates: the combined 3B with the synthetic mix (batch 4 x 4, about 3.5 h);
 the combined 3B on the GRU deciders' decisions at 200 ms (needs their following-word records; about 30 min).
+**Overnight 2026-11-19/20** (`results/harness/queue/selector_night_20261119.py`): averaging selectors did not help
+(1.5 s mean 6.11 -> 6.19 with the separate 3B), so the night goes to a stronger single selector: (1) the combined 3B at
+200 ms; (2) a 3B on everything that helped (both deadlines, following words, 60k synthetic decisions, all five folds),
+batch 2 x 8 with a slowdown watchdog; (3) the combined recipe on five folds, no synthetic; (4) the same with the
+decoder's confidence per candidate in the prompt (`--conf`, new).
  LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
 run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms
