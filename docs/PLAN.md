@@ -1,7 +1,7 @@
 # Streaming neural decoding plan — updated 2026-11-19
 
-**Where things stand (2026-11-19 evening):** live-word WER is 8.12 / 6.44 / 6.22% at 200 ms / 500 ms / 1.5 s on val-dev
-with one decoder (mean delay 78 / 204 / 993 ms), all three with the fine-tuned Qwen2.5-3B phoneme-aware selector (step
+**Where things stand (2026-11-19 evening):** live-word WER is 8.12 / 6.40 / 6.07% at 200 ms / 500 ms / 1.5 s on val-dev
+with one decoder (mean delay 78 / 204 / 992 ms), all three with the fine-tuned Qwen2.5-3B phoneme-aware selector (step
 1; at 200 ms on close decisions only; 8.64 / 7.06 / 6.51 without it), against a target of below 6% (`current_knowledge.md` section 0, which also holds every result and
 the ledger of what was tried). A second decoder's votes (without the selector) gave 6.77 / 6.48. The 500 ms and 1.5 s results come from the Y6_1
 average deciding the words, with word-familiarity features in the ranker. After the sentence, a learned rescorer with
@@ -150,6 +150,11 @@ admitted at D = 0 (a voting model needs R_M <= R_S + D - 1), and at 1.5 s a seco
 both deadlines and the following words at 1.5 s each helped a little; the 0.5B lost at 200 ms (8.58 vs 8.36). Queued:
 `selector_combined_20261119.py`, a 3B on both deadlines with the following words, then the synthetic-mix test again at
 batch 4 x 4 (at batch 8 its long prompts filled GPU memory and the run slowed 15x at step 3,000).
+**Done (21:05 EST):** the combined 3B (both deadlines + following words) is the new best: 1.5 s 6.22 -> 6.07 (four-split
+mean 6.29 -> 6.11, all four lower), 500 ms 6.44 -> 6.40 (mean 6.49 -> 6.45). The synthetic mix helped the 1.5B by about
+as much as the other two ideas (means 6.65 -> 6.60 at 500 ms, 6.38 -> 6.30 at 1.5 s). Gaps to 6%: 0.07 at 1.5 s (about
+6 words of 8,277), 0.40 at 500 ms. Next candidates: the combined 3B with the synthetic mix (batch 4 x 4, about 3.5 h);
+the combined 3B on the GRU deciders' decisions at 200 ms (needs their following-word records; about 30 min).
  LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
 run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms
