@@ -13,8 +13,8 @@ shown within 200 ms, 500 ms or 1.5 s of the moment the participant finished atte
 
 | Time limit after the word ends | One model | Full system | Mean delay | Deciding model |
 |---|---|---|---|---|
-| 200 ms | 8.64% | 8.12% | 78 ms | GRU D1 (causal) |
-| 500 ms | 7.42% | 6.40% | 204 ms | Transformer Y6 |
+| 200 ms | 8.64% | 8.06% | 78 ms | GRU D1 (causal) |
+| 500 ms | 7.42% | 6.39% | 203 ms | Transformer Y6 |
 | 1.5 s | 7.15% | 6.07% | 992 ms | Transformer Y6 |
 | After the sentence (not the target) | 5.06% | 4.28% | - | Transformer Y6, its 100 best sentences rescored |
 
@@ -30,10 +30,12 @@ its 38 ms per word charged it lowers Y6's live WER by 0.45-0.58 at 500 ms and 0.
 splits (Qwen2.5-1.5B: 0.36-0.48 and 0.22-0.36). At 200 ms it runs only on close decisions (29% of them, where the two
 best candidates score within a margin), which keeps 95.2% of D1's words in time and lowers WER by 0.49-0.63. The
 "full system" adds the CTC scores of an ensemble of acoustic models (11 causal GRUs at 200 ms and 500 ms, and at 1.5 s
-22 GRUs, 3 Transformers and Y6 with three extra CTC inputs), and at 500 ms and 1.5 s a 3B selector trained on both
-deadlines' decisions together that also sees the words already decoded after the one being chosen (40 ms per word):
-7.06% -> 6.40% at 500 ms and 6.51% -> 6.07% at 1.5 s (the separate 3B: 6.44% and 6.22%; lower on all four session
-splits at 1.5 s and three of four at 500 ms). The full system runs only with the best model that meets each limit. After the sentence, a
+22 GRUs, 3 Transformers and Y6 with three extra CTC inputs) and a stronger 3B selector, one per limit. At 1.5 s it is
+trained on both deadlines' decisions together and also sees the words already decoded after the one being chosen
+(40 ms per word): 6.51% -> 6.07%, lower than the separate 3B (6.22%) on all four session splits. At 200 ms and 500 ms
+the same recipe with 60k synthetic decisions and 25% more real ones added (39 ms per word): 8.06% at 200 ms (8.12%
+before, all four splits lower) and 7.06% -> 6.39% at 500 ms; at 1.5 s that version is worse (6.10%). The full system
+runs only with the best model that meets each limit, and each limit loads one selector. After the sentence, a
 learned rescorer combines GPT-2 Large with the
 same inputs over Y6's 100 best sentences (GPT-2 Large alone: 5.47%). The exact sentence is in that list for 89% of
 sentences, and always picking the closest one would give 2.24%, so better choosing has room left.
@@ -64,7 +66,7 @@ A second track on the Makin lab's ECoG dataset is intended; access and integrati
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/dark/01_live_wer_waterfall_500ms.png">
-  <img src="docs/images/light/01_live_wer_waterfall_500ms.png" alt="Waterfall chart of live word error rate at 500 ms: GRU G2's own words 11.16%; Transformer Y6 instead of the GRU -1.42; two language models choosing the word -1.61; word familiarity -0.27 (one model: 7.87%); CTC scores of an acoustic-model ensemble -0.81; an LLM that reads the heard phonemes -0.65; result 6.40%.">
+  <img src="docs/images/light/01_live_wer_waterfall_500ms.png" alt="Waterfall chart of live word error rate at 500 ms: GRU G2's own words 11.16%; Transformer Y6 instead of the GRU -1.42; two language models choosing the word -1.61; word familiarity -0.27 (one model: 7.87%); CTC scores of an acoustic-model ensemble -0.81; an LLM that reads the heard phonemes -0.67; result 6.39%.">
 </picture>
 
 ### GRU or Transformer, one acoustic model each

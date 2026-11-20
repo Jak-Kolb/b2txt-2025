@@ -1,7 +1,7 @@
 # Streaming neural decoding plan — updated 2026-11-19
 
-**Where things stand (2026-11-19 evening):** live-word WER is 8.12 / 6.40 / 6.07% at 200 ms / 500 ms / 1.5 s on val-dev
-with one decoder (mean delay 78 / 204 / 992 ms), all three with the fine-tuned Qwen2.5-3B phoneme-aware selector (step
+**Where things stand (2026-11-20 morning):** live-word WER is 8.06 / 6.39 / 6.07% at 200 ms / 500 ms / 1.5 s on val-dev
+with one decoder (mean delay 78 / 203 / 992 ms), all three with the fine-tuned Qwen2.5-3B phoneme-aware selector (step
 1; at 200 ms on close decisions only; 8.64 / 7.06 / 6.51 without it), against a target of below 6% (`current_knowledge.md` section 0, which also holds every result and
 the ledger of what was tried). A second decoder's votes (without the selector) gave 6.77 / 6.48. The 500 ms and 1.5 s results come from the Y6_1
 average deciding the words, with word-familiarity features in the ranker. After the sentence, a learned rescorer with
@@ -160,6 +160,13 @@ the combined 3B on the GRU deciders' decisions at 200 ms (needs their following-
 200 ms; (2) a 3B on everything that helped (both deadlines, following words, 60k synthetic decisions, all five folds),
 batch 2 x 8 with a slowdown watchdog; (3) the combined recipe on five folds, no synthetic; (4) the same with the
 decoder's confidence per candidate in the prompt (`--conf`, new).
+**Overnight results:** (1) a tie at 200 ms. (2) "Everything" 3B: pick accuracy 90.8 / 90.9% (combined 89.9 / 90.1%);
+new best at 200 ms, 8.12 -> 8.06 (mean 8.16 -> 8.01, all four splits lower; one model 8.64 -> 8.40) and 500 ms 6.40 ->
+6.39 (mean 6.45 -> 6.41; one model 7.43 -> 7.29); worse at 1.5 s (6.10, mean 6.16 vs 6.11), so 1.5 s keeps the combined
+3B. Possibly because half of its training decisions (the synthetic ones) have no following words. (3) and (4) did not
+finish: WSL shut down cleanly at 04:29 EST (Windows side) with (3) at step 3,100 of 3,644, which had also slowed to
+5 s per step from step 1,550 (GPU memory spill at batch 8 with five folds; the watchdog's rising median missed it).
+To rerun: (3) and (4) at batch 4 x 4, the watchdog against the first blocks' median.
  LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
 run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms
