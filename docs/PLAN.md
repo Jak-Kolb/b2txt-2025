@@ -185,6 +185,8 @@ the 95% rule and were worth -0.10 / -0.18. New list set at D 1 / 12, scored thro
 selectors. (2) **Y6_1 avg and Y6_2 avg averaged frame by frame into one decider** (same recipe and timing; better lists
 would act on the never-offered words). Sentence-end gate first: it goes to the live pipeline if it is at least 0.3
 below the better single run (<= 6.65). If it passes, two more Y6 runs (about 110 min each) for a four-way average.
+Result: not passed. Best 6.84 (mean of the logits, scale 0.35; controls 6.97 / 6.95). The runs share most errors, so
+more seeds of the same recipe will not buy much.
 Training a new acoustic recipe is last: recipe changes have not moved live WER since October.
  LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
