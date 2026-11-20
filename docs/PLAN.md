@@ -171,7 +171,11 @@ To rerun: (3) and (4) at batch 4 x 4, the watchdog against the first blocks' med
 better (500 ms 6.46, mean 6.41, same as the everything 3B; 1.5 s 6.17, mean 6.21, higher than the combined 3B on all four
 splits). It is the best selector for one model alone (Y6: 500 ms 7.42 -> 7.24, 1.5 s 7.15 -> 7.03, every split); to use it
 in the one-model rows, score the GRU decisions with it too, so chart 03 keeps one selector. (4) `--conf` spilled GPU
-memory at batch 4 x 4 (2.65 s per step from the start); restarted at batch 2 x 8.
+memory at batch 4 x 4 (2.65 s per step from the start); restarted at batch 2 x 8. Result: a tie at 1.5 s (6.08 vs
+6.07, mean 6.08 vs 6.11; split values 6.08 / 6.05 / 6.02 / 6.17), worse at 500 ms (mean 6.46). Against (3), its control,
+the confidence lowers 1.5 s on all four splits (mean 6.21 -> 6.08) with the same pick accuracy. Shown numbers unchanged:
+8.06 / 6.39 / 6.07. Next candidate: the combined recipe on folds 0-3 with `--conf` (about 1.5 h at batch 2 x 8). If the
+five-fold cost (+0.10) and the confidence gain (-0.13) add up, 1.5 s would be about 5.98.
  LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
 run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms
