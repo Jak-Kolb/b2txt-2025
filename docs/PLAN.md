@@ -195,6 +195,12 @@ Training a new acoustic recipe is last: recipe changes have not moved live WER s
 of words in time (p95 499 ms): a tie at the rule's edge, so 500 ms stays at D 0. (2) not passed (above).
 Next at 1.5 s: D 13 / 14 may also keep 95% in time with the full system (98.9% at D 12). Next at 500 ms: the Transformer
 architecture changes (shorter attention window, causal conv module, size), proposed, waiting for the user.
+**Queued 2026-11-20 17:44 EST (user: "go on both"):** (a) D 13 / 14 at 1.5 s (`waits_avg_20261120.py --waits 13,14`;
+the longest wait inside the 95% rule becomes the 1.5 s rule, fixed before the D 12 run). (b) Then
+`results/harness/queue/tfm_arch_20261120.py`: Y15 (2 s attention window per layer), W1 (causal conv module in every
+block), V1 (512 wide, 6 layers), two runs each (seeds as Y6_1 / Y6_2), about 19 h with decoding, done around midday
+2026-11-21. Rule set before training (recipe means, average weights): into the live pipeline if best 4-gram WER
+<= 6.66 (Y6 6.96 - 0.3), or never-seen-word phoneme error <= 32.75 (Y6 35.75 - 3) with WER <= 7.06.
  LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
 run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms
