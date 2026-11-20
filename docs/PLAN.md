@@ -1,12 +1,27 @@
-# Streaming neural decoding plan — updated 2026-11-17
+# Streaming neural decoding plan — updated 2026-11-19
 
-**Where things stand:** live-word WER is 8.81 / 7.61 / 7.42% at 200 ms / 500 ms / 1.5 s on val-dev against a target
-of below 6% (`current_knowledge.md` section 0, which also holds every result and the ledger of what was tried). The
-500 ms and 1.5 s results come from the LightBeam-recipe Transformer Y7 deciding the words (at 500 ms with more late
-words than the GRU decider's 8.18); the best sentence-end result is Y6 with GPT-2 Large rescoring, 5.47. No Transformer
-reliably meets 200 ms yet. No queue is running. The research direction remains exploratory.
+**Where things stand (2026-11-19 evening):** live-word WER is 8.12 / 6.40 / 6.07% at 200 ms / 500 ms / 1.5 s on val-dev
+with one decoder (mean delay 78 / 204 / 992 ms), all three with the fine-tuned Qwen2.5-3B phoneme-aware selector (step
+1; at 200 ms on close decisions only; 8.64 / 7.06 / 6.51 without it), against a target of below 6% (`current_knowledge.md` section 0, which also holds every result and
+the ledger of what was tried). A second decoder's votes (without the selector) gave 6.77 / 6.48. The 500 ms and 1.5 s results come from the Y6_1
+average deciding the words, with word-familiarity features in the ranker. After the sentence, a learned rescorer with
+the CTC ensemble and familiarity reaches 4.28% (GPT-2 Large alone 5.47%; best sentence in the list 2.24%). Y13 reaches
+7.67% at 200 ms but has 94.9% of its words within 200 ms, just short of the 95% rule.
 
-Models are named as in `harness/registry/MODELS.md`, which also lists the letter IDs used here (A2, G2, X6).
+**Reporting (2026-11-19, `current_knowledge.md` 1.4):** a budget is met when 95% of words are final within it; correct
+but late words then count as correct; every live number carries its mean delay; per budget, one model and the full
+system; per model at sentence end, one model and the full system. Charts and slides name recipes (Y6), not runs.
+
+**Order of work after the 2026-11-19 presentation:** fold model 4 reran (done 02:22 UTC, Y6sf4_1); the zero-shot
+selector probe ran and added nothing (1d); the fold models' lists are being rebuilt after a class-order bug (1b), then
+a quick fine-tune on a small subset decides whether the full one is worth running (1f). Words seen fewer than five times in the
+training sentences are 15% of val-dev words and two thirds of the errors, and no acoustic model has improved on
+never-seen words; the overnight models of 2026-11-17 (Y6_2, Y11-Y13) did not move live WER. The work now is on the language
+side, led by a phoneme-aware word selector (step 1, started 2026-11-18; its five fold models are trained). The research
+direction remains exploratory.
+
+Models are named as in `harness/registry/MODELS.md`: recipe IDs (`Y6`) for configurations, run IDs (`Y6_1`, `Y6_2`)
+for single training runs, "avg" for a run's averaged weights.
 
 ## Objective and scope
 
@@ -26,138 +41,174 @@ freeze unrelated development. The August plan, the September milestones of this 
 and the review itself are in `docs/history/` (index: `docs/history/README.md`).
 `results/RESULTS.md` (local) is the source-linked record of the September measurements.
 
-## Next experiments, prepared 2026-11-10 (step 3 done with no arm kept, step 4 running, the rest not run)
+## Next steps (2026-11-18)
 
-Target: live-word WER below 6% (`current_knowledge.md` section 0; now 8.81 / 7.61 / 7.42 at 200 ms / 500 ms / 1.5 s).
-The ranker is saturated on its current inputs (more LLMs, data and capacity add nothing), so each step adds new
-evidence. Code is in place and smoke-checked on CPU; GPU smokes happen at launch (`harness train` smokes 50 batches
-before the real run). Rules as always: one GPU process at a time, no 8.5 GB decoder alongside GPU jobs, nice 19,
-fresh run paths. All results are val-dev and exploratory; one seed per arm.
+Earlier plan sections (the 2026-11-10 list, the language-model steps, the LightBeam follow-ups, chain 1, the night of
+11-17) are finished or superseded: `docs/history/PLAN_sections_2026-11-10_to_11-18.md`. Their results are in
+`current_knowledge.md`. Acoustic recipe variants and more CTC members no longer move live WER (4.9, 6.11); the gaps
+to 6% (2.6 / 1.1 / 0.5 points at 200 ms / 500 ms / 1.5 s) must come from the language side and from words rare in
+training (two thirds of the errors; about 60% misranked, 40% never offered). All numbers val-dev (1,253 trials, 8,277
+words), exploratory, reported by familiarity bin with mean delay and the share of words within the budget (a budget is
+met when 95% of words are final within it; late-but-correct words then count as correct). Machine: one GPU job at a time,
+never beside a WFST decoder; CPU-only untimed decodes can run two at a time (`harness bench/sweep --no-job-lock
+--device cpu`; RAM fits two 8.5 GB decoders).
 
-1. **Pool candidate lists across deciders** (CPU, under an hour). Other deciders' saved lists and partials vote on
-   each option and add options the deciding model lacks.
-   `nice -n 19 .venv/bin/python learning/live_eval/llm_live/ranker_pool.py learning/live_eval/out/llm_live/ranker_pool.json > learning/live_eval/out/llm_live/ranker_pool.log 2>&1`
-   Read: WER per decider for "own lists" / "+ member votes" / "+ member-only options", and "reference offered:
-   own / pooled". The members' decoders are assumed to run concurrently; their compute is not in the commit time.
-   If the gain is under 0.3, candidates are not the limit: go to step 3.
-2. **Budget curve at 2, 3 and 4 s** (CPU decoding then GPU scoring, about 12 h; not alongside training).
-   `nohup .venv/bin/python results/harness/queue/late_deadlines_20261109.py > results/harness/queue/late_deadlines_20261109_run.log 2>&1 &`
-   Result in `learning/live_eval/out/llm_live/ranker_lists_late.{json,log}`. Late deadlines often clip to the
-   trial end (oracle endpointing): report that share with the numbers.
-3. **Phrase splicing and diphone targets.** Done 2026-11-16: no arm passed its keep rule on the GRU or the conv
-   Transformer (results in `current_knowledge.md` 4.10). The cut points from `data_prep/word_boundaries.py` remain
-   for step 4.
-4. **Non-CTC second scorer** (one training of roughly 1-2 h per decider, untimed; needs step 3's cut points).
-   `.venv/bin/python model_training/aed_scorer.py --encoder gru1344_head256_pall_f160_20k_s10 --out model_training/trained_models/aed_gru1344_head256_pall_f160_20k_s10_$(date -u +%Y%m%dT%H%M%SZ)`
-   then, per deadline, `learning/live_eval/llm_live/aed_features.py features HEAD_DIR la1344_r2_s10_final 1` (G2
-   under its old name, which the cached files in `learning/` are keyed by; and
-   `13`), then `aed_features.py rank OUT_JSON 1`. The `rank` path has not been exercised end to end. The encoder
-   saw the training trials, so the head may over-trust it; step 5's fold models remove that.
-5. **Candidate-aware fine-tuned LLM** (about 1-1.5 weeks; only the first piece exists). Give it the live partial
-   hypotheses of several deciders as well as the candidates (see "What the 2026-11-10 literature check changes").
-   Ready: `dataset.train_fold.n_folds=5` / `dataset.train_fold.holdout=K` trains without every fifth training trial.
-   Still to build: a harness scope that decodes held-out training trials; deadline lists on them
-   (`llm_live/run.py` pattern); the selector fine-tune (prefix + candidates + phonemes -> next word). `peft` is not
-   installed and `bitsandbytes` cannot find its CUDA library, so 4-bit loading does not work today; OPT-2.7B in fp16
-   fits 16 GB without it. Environment changes need approval.
+### 1. Phoneme-aware word selector (started 2026-11-18; 1-1.5 weeks)
 
-### Language-model steps, planned 2026-11-11 (nothing built or run)
+**Idea.** At each deadline an LLM reads the words already shown, the decision's candidate words with their
+pronunciations, and the decider's phoneme string for the word being decided, and scores each candidate (later also
+proposes a word outside the list). Never-seen words keep about 65% of their phonemes right, which can be enough to
+recognise the word the way spelling correction does. The ranker's CTC features already measure each candidate's
+acoustic match, so the selector has to add what they cannot: context and sound judged together, the decider's typical
+confusions (learned from held-out errors), and words the list does not contain. Precedent (sentence end only):
+DCoND-LIFT's fine-tuned LLM reading candidates and phonemes, 8.09 -> 5.77 with ten models, 7.29 in-context only.
 
-Where the language side loses words at the 500 ms deadline (`current_knowledge.md` 6.4): the ranker picks a wrong
-candidate for 5.88% of reference words, and 1.87% are absent from the candidates and from the final sentence. More
-off-the-shelf LLMs add nothing, so each step changes what the LLM knows or what the first pass offers. Both steps
-need approval before they start.
+**1a. Out-of-fold models (done 2026-11-19 02:22 UTC: Y6sf0_1 to Y6sf4_1, full-val PER 10.05-10.17).** On their own training trials models
+have near-perfect phonemes and have seen every word, so the selector's training decisions come from models that never
+saw them: five Y6-recipe models, each without one fifth of the training sentences
+(`results/harness/queue/folds_y6_20261118.py`; `dataset.train_fold` with `by: sentence`, new 2026-11-18, because 17.6%
+of training trials repeat a sentence). Per fold about 1,600 trials and 10,000 words, 4.5-5.3% never seen by its
+model (val-dev 6.8%). Check: each fold model's val-dev PER near Y6_1's (it sees 80% of the data).
 
-- **L1. Fine-tune OPT-2.7B on the 8,072 training sentences and swap it into the deadline ranker** (estimated one
-  day: fine-tune, re-score the saved deadline lists, re-fit the ranker). Fine-tuning was the largest single-LLM gain
-  for GPT-2 Large here, OPT is still used off the shelf, and LightBeam's fine-tuning was worth 7.26 -> 6.36 at
-  sentence end. Scoring cost at the deadline does not change (about 35 ms per 50 candidates). Needs `peft` for
-  LoRA (an environment change). Pattern: `model_training/benchmark/finetune_rescorer.py`, which made the fine-tuned
-  GPT-2 Large. Reference: the current ranker (fine-tuned GPT-2 Large + OPT-2.7B + CTC ensemble) on the same
-  cross-fitted lists. Keep rule: live WER at least 0.2 lower at two of the three budgets, and deadline-respecting
-  WER no worse.
-- **L2. A less heavily pruned first-pass n-gram** (estimated one to two days, mostly a CPU build; `build-lm`
-  skill). Ours is a 4-gram pruned at 1e-8 (3.9 GB graph, about 8.5 GB of RAM); published systems use an unpruned
-  5-gram (~300 GB), and BEST reports 2.57 vs 2.92 for 5-gram vs 4-gram in its pipeline. First a size table: graph
-  size and decoder RAM at two or three lighter pruning thresholds, to find what fits in 27 GB. Then, for the
-  largest that fits: sentence-end WER, the 100-best oracle, the share of deadlines where the reference word is
-  offered (93% now), decoder memory and step time, and the ranker on the new lists. Reference: the same decider
-  with `gen4g`. Risk: a larger graph decodes more slowly, and late words already cost WER at 200 ms.
-- **Step 5 above is the third language-model step.** L1's fine-tuning path (LoRA on OPT-2.7B) is its first piece.
+**1b. Held-out decisions (CPU, after training; then GPU for scoring).** Per fold: the fold model's log-probs on its
+held-out trials, a WFST decode with partials, and prefix 50-best lists at the deadlines (D = 0 and D = 10, as the Y6_1
+decider), as `llm_live/prefix_nbest.py` does for val-dev. The harness scopes cover val only, so this needs a small
+driver over the training trials. About six times val-dev's size; two decoders in parallel. Leakage: GPT-2 L ft and
+every CTC member were trained on all training sentences, so none of their scores enters the selector's inputs; the
+candidate order comes from the decoder score (acoustic + 4-gram) and OPT-2.7B. Familiarity, where used, counts the
+fold model's own training sentences.
 
-### Improving on the reproduced LightBeam model, planned 2026-11-16
+**Fix (2026-11-19):** the first lists were wrong: `heldout.py` saved the logits in the acoustic class order, which the
+WFST decoder misread (every phoneme as its neighbour), so the reference was in the top 20 for under 1% of decisions.
+Fixed and rebuilt from the saved logits (folds 0 and 4 first, 1-3 next); nothing had been trained on them, and the
+val-dev records and the synthetic set were not affected (`current_knowledge.md` 6.11).
 
-Y6 is LightBeam's recipe reproduced (6.97; `current_knowledge.md` 4.9), and nothing of ours has beaten it. Ours so
-far: averaging the last six snapshots (-0.30 on Y6, -0.01 on Y7) and the causal-smoothing variant Y7 (7.43, worse
-than Y6 with twice the future input). One seed each, and their own seeds spread 4.5-6.0, so a difference under about
-0.3 is not a result. Only the items marked "queued" are scheduled; the others need a go-ahead.
+**1c. Selector inputs.** Context: the words before the position in the decision's best candidate by decoder score
+(what a live system displays), not the reference. Phonemes: the decider's greedy CTC phonemes between the previous
+word boundary and this one. Candidates: the top 20 by decoder score (they hold nearly everything the 50 hold), each
+with its lexicon pronunciation. Target: the reference word, by minimum-edit alignment. About 50k decisions per
+deadline from the folds; fold 4 held out for the selector's own validation.
 
-**A. Measure what the two models already give (no training).**
-- A1. **Y6 through the deadline ranker** as decider and as ensemble member. Y7 was done 2026-11-17
-  (`current_knowledge.md` 6.6): at commit rules matched to its later word ends it gives 7.61 at 500 ms (more late
-  words than G2's 8.18) and 7.42 at 1.5 s (keep rule met). Without the LLM step Y6 is 0.15-0.25 better than Y7 (final
-  weights) and its average about 0.6 better (6.2).
-  Keep rule: live WER at least 0.2 below the G2 decider at the same budget, deadline-respecting WER no worse. Needs A4.
-- A2. **Live replay of Y6 / Y7 at their best acoustic scale (0.3)**, CPU: the recorded replays used 0.4, where both
-  are 0.5 worse at sentence end.
-- A3. **Word voting and the CTC ensemble with Y6 / Y7 added**, from saved outputs (`learning/per_eval/sentence_vote.py`;
-  reference 7.00 with 14 GRUs, 6.69 with three older Transformers), and their word-end timing against G15 from the
-  saved replays (late words cost 2.1 points at 200 ms).
-- A4. **Count smoothing look-ahead in the ranker** (`ctc_features.lookahead` asserts none; `ranker.budget()`), so Y6
-  can be a member and a decider. Code only.
+**Queued (2026-11-18 16:10 UTC):** `results/harness/queue/selector_probe_20261118.py` waits for the fold models,
+then runs 1b (held-out forward passes on the GPU, lists with two CPU decoders), 1c (records) and 1d (the probe on
+the GPU, then its ranker runs on four splits per deadline). Code: `learning/selector/` (`inputs.py`, `heldout.py`,
+`score.py`, `ranker_selector.py`); the val-dev records are in `learning/selector/val/`. The reference word is in
+the top 20 by decoder score for 78% of never-seen words but first for only 42% (`current_knowledge.md` 6.11).
 
-**B. Trainings on the corrected recipe (about 2 h each at 63k; one GPU process at a time).**
-- B1. **Seeds.** Y7 seed 2 done (Y9: 7.66 / 7.58 vs Y7 7.44 / 7.43; live without the LLM unchanged). Y6 seed 2
-  is not run: it is the model every arm here is compared with.
-- B2. **CR-CTC (Y8: 8.71 / 8.57 at scale 0.5, the grid edge; higher scales queued).** As an improvement on Y7 it has
-  to reach 7.13 or below (0.3 under
-  Y7's 7.43, average model) at the same compute. If it does: the same on Y6's setting.
-- B3. **Where the future input is spent.** Y6 (80 ms, centred smoothing) beat Y7 (160 ms, last-layer attention), with
-  two things changed at once. Two arms on the corrected recipe:
-  - `tfm384x5_lb_p20000_f160_sm80_noday_v2_63k_s10`: centred smoothing plus one frame of attention look-ahead, 160 ms
-    in total. Does attention look-ahead add to Y6? Keep rule: at least 0.3 below Y6's average; then it is the 500 ms
-    and 1.5 s decider candidate.
-  - `tfm384x5_lb_p20000_f0_noday_v2_63k_s10`: no future input at all, the 200 ms candidate. Reference D1 (8.22 at
-    sentence end, 11.6 live without the LLM step). Keep rule: at least 0.3 below D1.
-- B4. **Phrase splicing and diphone targets on this recipe:** not run, since neither passed its keep rule on the GRU
-  or the conv Transformer (2026-11-16).
-- B5. **More seeds of the best variant as ensemble members**, only after A1 / A3 show that a Y member helps.
+**1d. Zero-shot probe (GPU, about 1 h, when the GPU is free).** Qwen2.5-3B (downloaded 2026-11-18) prompted with a
+few examples in the same format scores the val-dev candidates; its score enters the cross-fitted ranker as a feature.
+DCoND's in-context result says this should help a little; if it adds nothing beyond the CTC features, the fine-tune
+has to make up the whole case.
+**Result (2026-11-19, `results/harness/queue/20261119T022309Z_selector_probe/`):** nothing added. With the probe's score
+as a ranker input, live WER is 7.06 -> 7.03 at 500 ms and 6.51 -> 6.50 at 1.5 s on the standard split, -0.02 to +0.05
+on three random session splits, and never-seen words do not move (500 ms 43.0 -> 42.8). The fine-tune (step 2) has to
+make the whole case.
 
-**C. Make it real time (needed before any latency claim).** A streaming forward pass for the relative-bias
-Transformer (per-layer caches over the 20 s window; the output for frame t leaves when frame t + R arrives), checked
-against the offline outputs as the GRU head was (2e-5), then the harness timing check. Today the Y models are
-replayed from outputs computed offline under the causal mask.
+**1e. Synthetic training data (CPU, about a day of code; added 2026-11-18).** The folds give about 50k real
+decisions, of which only about 11% are words rare in training. A text corpus can supply millions: take sentences
+from the local OpenWebText sample (`results/corpus/openwebtext_2gb.fmt.txt`, 2 GB), pick a word, look up its
+pronunciation (125k-word lexicon), pass it through a phoneme noise channel estimated from the fold models' held-out
+decodes (substitution, deletion and insertion rates per phoneme, by word familiarity: never-seen words about a third
+of phonemes wrong, familiar ones about 5%), and build the candidate list the way the decoder does (the lexicon words
+nearest to the noisy phonemes, weighted by word frequency, the true word present about as often as in the real lists:
+79% for never-seen words). The selector then sees the whole 125k vocabulary, most of it never in the B2T training
+sentences. The noise channel comes from the folds only, never from val-dev. Public sets checked against this:
+HyPoradise (LLM correction of ASR n-best lists; text only, no phonemes) and phoneme recognizers run on LibriSpeech
+(audio error patterns, not this decoder's); the synthetic set matches our decoder's errors and vocabulary better, so
+it comes first, with HyPoradise-style pretraining as an option if the synthetic set alone falls short.
 
-**D. Outside ideas.** `docs/research/research_prompt.md` (not tracked) is a brief for an external deep-research run
-on new architectures and training ideas; the report it produced is `docs/research/research_report_2026-11-17.md`.
-Its proposals are triaged into this plan; none is adopted unread.
+**Progress 2026-11-18 evening:** fold 0's held-out phoneme error by familiarity is 38.2 / 26.5 / 7.8 / 2.4
+(val-dev, Y6_1 avg: 35.3 / 24.1 / 7.4 / 2.2), so the held-out trials do look like val-dev. The noise channel
+from fold 0 (`learning/selector/noise.py`) and the generator (`learning/selector/synth.py`) give lists with the
+right word first / in the top 20 for 44 / 74% of never-seen words (real lists 42 / 78%); a 300k-decision set is
+being generated. Re-estimate the channel from all five folds once they finish.
 
-- **Follow-up queue, started 2026-11-16 12:24 EST, reordered 13:50** (`results/harness/queue/followup_20261116.py`,
-  log `results/harness/queue/followup_20261116_run.log`). Done: X9 (conv Transformer + diphone) trained; decoding of
-  G16, G17, Y8, X8 and X9 (`results/harness/queue/20261116T185056Z_decode`, recorded in `current_knowledge.md`).
-  Running since 2026-11-17 00:01 UTC: the step-4 second scorer on G2, then on Y7, then Y7's second seed (`..._63k_s11`; its first attempt was stopped at batch
-  8000 on the user's request) and its decoding. Then `results/harness/queue/y8_scale_up_20261116.py` (waits for the
-  queue's pid) decodes Y8 at scales 0.6, 0.7, ... until WER rises (log `y8_scale_up_20261116.log`).
-  Restart the queue from a stage with `--from aed_g2` etc. Afterwards: Y7 (and any
-  winners) in the deadline ranker.
+**1f. Fine-tune.** First (2026-11-19) a quick run: LoRA on Qwen2.5-1.5B with about 4k contested decisions of fold 0
+(`finetune.py --contested --folds 0`), then pick accuracy on fold 4 and on val-dev against the decoder's first candidate
+(`eval_choice.py`; val-dev: decoder 85.4%, zero-shot Qwen2.5-3B 76.3%). Only if it beats the decoder there: the full
+run on folds 0-3, then 1g.
+**Result of the quick run:** pick accuracy 86.2% on val-dev against the decoder's 85.4% (fold 4: 87.8 vs 85.7). In the
+ranker, 500 ms 7.06 -> 6.75 (-0.23 to -0.31 on all four splits); with its 56 ms charged the 95% rule holds (p95 432 ms,
+98.0% of words within 500 ms). 1.5 s: 6.51 -> 6.31 on the standard split only. Next: rebuild folds 1-3
+and train on folds 0-3 (about 23k contested decisions), and cut the selector's time (merged adapter, fewer options,
+scoring only close decisions, or in place of OPT at 500 ms).
+**Result of the full run (2026-11-19, `results/harness/queue/20261119T174419Z_selector_full/`):** folds 0-3, 23k
+contested decisions, merged adapter (28 ms). Pick accuracy 89.3% on val-dev (decoder 85.4%). Ranker, time charged:
+500 ms 7.06 -> 6.58 (all four splits -0.34 to -0.48), 1.5 s 6.51 -> 6.29 (standard and two of three random splits);
+the 95% rule holds at both (98.7% / 99.4% of words within the budget). Kept. Gaps to 6% now 0.58 at 500 ms and 0.29 at 1.5 s. Next for the selector:
+the synthetic set and a 3B model (more rare words; it already cuts never-seen-word WER 43.0 -> 39.4), D1's decisions
+for 200 ms, and words outside the list (1h).
+**200 ms (2026-11-19):** the selector on close decisions only (`SEL_GATE=3`, 29% of contested decisions) keeps 96.0% of
+D1's words within 200 ms: full system 8.64 -> 8.36, one model 9.27 -> 8.84, on all four splits.
+**Queued 2026-11-19 afternoon, to get 500 ms and 1.5 s under 6%** (gaps 0.58 and 0.29):
+`results/harness/queue/selector_3b_20261119.py` (Qwen2.5-3B selector, D 0 and 10), then
+`selector_ideas_20261119.py`: one 1.5B model on both deadlines' decisions; the words already decoded after the decision
+word at 1.5 s; a 0.5B selector for 200 ms (faster, so more decisions can use it); 60k synthetic decisions mixed in
+(noise channel re-estimated from all five folds). Dropped: Y6_2's lists voting. With Y6_1's own look-ahead it is not
+admitted at D = 0 (a voting model needs R_M <= R_S + D - 1), and at 1.5 s a second decoder gave only 6.51 -> 6.48.
+**Results and next (2026-11-19 evening):** the 3B selector is the new best (6.44 / 6.22). On the 1.5B, one model for
+both deadlines and the following words at 1.5 s each helped a little; the 0.5B lost at 200 ms (8.58 vs 8.36). Queued:
+`selector_combined_20261119.py`, a 3B on both deadlines with the following words, then the synthetic-mix test again at
+batch 4 x 4 (at batch 8 its long prompts filled GPU memory and the run slowed 15x at step 3,000).
+**Done (21:05 EST):** the combined 3B (both deadlines + following words) is the new best: 1.5 s 6.22 -> 6.07 (four-split
+mean 6.29 -> 6.11, all four lower), 500 ms 6.44 -> 6.40 (mean 6.49 -> 6.45). The synthetic mix helped the 1.5B by about
+as much as the other two ideas (means 6.65 -> 6.60 at 500 ms, 6.38 -> 6.30 at 1.5 s). Gaps to 6%: 0.07 at 1.5 s (about
+6 words of 8,277), 0.40 at 500 ms. Next candidates: the combined 3B with the synthetic mix (batch 4 x 4, about 3.5 h);
+the combined 3B on the GRU deciders' decisions at 200 ms (needs their following-word records; about 30 min).
+**Overnight 2026-11-19/20** (`results/harness/queue/selector_night_20261119.py`): averaging selectors did not help
+(1.5 s mean 6.11 -> 6.19 with the separate 3B), so the night goes to a stronger single selector: (1) the combined 3B at
+200 ms; (2) a 3B on everything that helped (both deadlines, following words, 60k synthetic decisions, all five folds),
+batch 2 x 8 with a slowdown watchdog; (3) the combined recipe on five folds, no synthetic; (4) the same with the
+decoder's confidence per candidate in the prompt (`--conf`, new).
+ LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
+real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
+run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms
+budget (may replace OPT).
 
-### What the 2026-11-10 literature check changes
+**1g. Evaluation.** The selector's log-probability of each candidate, and its interaction with the rare flag, as
+ranker features for the Y6_1 decider at 500 ms and 1.5 s and for D1_1 at 200 ms (cross-fitted by session halves, four
+splits; `learning/selector/ranker_selector.py`), its time charged. Keep rule (set now): live WER at least 0.2 lower
+at 500 ms or 1.5 s, with 95% of words within the budget (compute charged), on the standard split and two of three
+random splits. Then 1h:
+words the selector generates outside the list as extra options (the only route besides step 2 to the never-offered
+40%).
 
-- **Step 5 is the largest published lever, and it should read several models.** Merging the decoded sentences of
-  10-29 models with a fine-tuned LLM cuts sentence-end WER by 29-57% (DCoND-LIFT 8.09 -> 5.77; BIT 4.06 -> 1.76; RNN
-  6.67 -> 3.09; Stanford deep ensembles, T15: -35%); the same merge without fine-tuning gives 6-10%. Every result is
-  sentence-end; none is for words committed at a deadline. Here, plain word voting over the saved sentence-end
-  outputs of 14 GRUs gives 7.67 -> 7.00, and 6.69 with three Transformers added
-  (`learning/per_eval/sentence_vote.py`), in line with the untrained numbers. So build the step-5 selector to read
-  the live partial hypotheses of several deciders, not one decider's 50-best.
-- **Different architectures are worth more as members than more seeds**: three Transformers, each worse than every
-  GRU, added more to the vote than going from 5 to 14 GRUs. Transformer arms that miss the GRU's WER are still
-  candidates for members.
-- **Untested and cheap:** members made from one model with test-time input noise (Stanford: -17% on T15 at sentence
-  end, against -35% for ten separately trained models); a less heavily pruned first-pass n-gram (ours is a 4-gram
-  pruned at 1e-8; the literature's 5-gram needs ~300 GB).
-- **Not available to us:** multi-user training (Fogg et al.: -30% on this dataset) needs five other participants'
-  unreleased data; no pretrained weights are published.
+**Stop rule.** If neither the probe nor the first fine-tune lowers live WER by 0.1 at any budget, stop and write it
+up as a negative result.
+
+### 2. Coverage of rare words (CPU, can run beside 1)
+
+- 2a. Diagnostic (minutes, saved outputs): for each error whose word was absent at its deadline, is the word in the
+  decoder lexicon, in the sentence-end 100-best (5.1), and how probable is it under the 4-gram?
+- 2b. 100-best deadline lists for the Y6_1 decider at D = 0 and D = 10 (CPU decode; GPT-2 L ft and OPT scoring, about
+  twice the LLM time per decision). Keep rule: live WER at least 0.1 lower at 1.5 s, 95% of words within the budget.
+- 2c. A less pruned first-pass 4-gram is not buildable here: composing the decoding graph past pruning 1e-8 needs
+  about 50 GB of RAM (August build log, `docs/history/log_2026-08.md`; 1e-8 peaked at 25 GB of 27). The unpruned
+  4-gram already exists (`results/lm_general_4gram/lm_orig.arpa`, 61 M n-grams, 2 GB OpenWebText; pruned versions at
+  3e-9 and 1e-9 beside it), so instead: rescore every deadline candidate with it as a ranker feature (CPU). That
+  helps ranking of rare sequences, not coverage.
+
+### 3. A stronger general LLM in the ranker (GPU, about a day)
+
+Qwen2.5-3B (downloaded) scores the saved deadline lists (Y6_1 decider D = 0 and D = 10, D1_1's lists) in fp16; it enters
+the ranker with its rare-word interaction, as a third LLM at 1.5 s and in place of OPT at 500 ms (a third LLM made
+words late there before). The October Qwen 0.5B / 1.5B test used weights tuned for GPT-2; the ranker now learns
+them. Keep rule: live WER at least 0.15 lower at one budget, 95% of words within the budget. Shares the GPU with step 1.
+
+### 4. Y13 as the 200 ms decider (about half a day)
+
+Y13 (Y6_1 with shorter masks) commits at its own word end with p95 120 ms and is 11.21 live before any LLM step (D1_1:
+11.57). Deadline lists at D = 0 and D = 1 (CPU decode), GPT-2 L ft and OPT scoring, CTC features (members with at most
+one frame of future input: the causal GRUs and the Y6-recipe models), the familiarity ranker on its own lists and
+pooled with D1_1's. Keep rule: live WER at least 0.15 below 8.64, with 95% of words within 200 ms (compute charged). Then the
+deadline compute (fp16 GPT-2, fewer scored candidates; about half the 200 ms lateness).
+
+### Not now
+
+More acoustic recipe variants or CTC members (including the 11-16 attention look-ahead and causal arms); the 2-4 s
+budget curve; the corpus oracle; marginalized diphones; phrase splicing; fine-tuning OPT on the training sentences
+(favours the vocabulary that is already right); Deadline-MWER and the neural-token adapter (they can reuse 1a's fold
+models later).
 
 ## Open tracks and standing constraints
 
@@ -177,8 +228,13 @@ Its proposals are triaged into this plan; none is adopted unread.
 - **Timing.** Trial ends are the dataset's (oracle endpoints). Word-end times are alignment proxies, not ground
   truth. Raw acquisition and feature extraction are outside the replay boundary. Report deadline misses and timing
   coverage; observed maxima are not hard bounds.
+- **Real-time Transformer forward pass (needed before any latency claim with a Y model).** Done for the LightBeam
+  recipe without attention look-ahead (Y6) on 2026-11-19: the streaming path caches keys and values over the 20 s
+  window, streamed logits match offline within 2.5e-5, and a paced CPU replay of `Y6_gen4g` on 2 trials passed the
+  harness equivalence check (lag p95 94 ms). Still to do before a latency claim: the harness timing check on the GPU
+  over `val-dev-sample`; and a streaming path for attention look-ahead (Y7).
 - **Normalization experiment (dormant).** Resolve preprocessing, clipping and reset provenance and amend the
-  proposed variance floor (R-D2 / R-D3) before that treatment; see `.claude/rules/acoustic-pipeline.md`.
+  proposed variance floor (R-D1_2 / R-D3) before that treatment; see `.claude/rules/acoustic-pipeline.md`.
 
 The September milestones (output capture, paced replay, the harness, the first commitment baseline and the first
 causal Transformer) are complete; their text is in `docs/history/PLAN_2026-09.md` and their results in

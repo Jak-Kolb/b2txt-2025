@@ -1,0 +1,8 @@
+name: D1_gen4g
+description: "D1_1 (causal 1344-unit GRU, no look-ahead) + general 4-gram. Decoder alone 8.22% val-dev WER at sentence end; decides the 200 ms live results."
+acoustic: gru1344_pall_f0_20k_s10
+lm: gen4g
+decode: {}
+decode_tuned_on: inherit
+preprocess_override: null
+live_rank: 2

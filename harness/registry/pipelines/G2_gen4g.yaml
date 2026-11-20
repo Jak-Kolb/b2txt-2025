@@ -1,0 +1,8 @@
+name: G2_gen4g
+description: "G2_1 (1344-unit GRU with a 160 ms look-ahead head) + general 4-gram. Decoder alone 7.74% val-dev WER at sentence end; the GRU baseline."
+acoustic: gru1344_head256_pall_f160_20k_s10
+lm: gen4g
+decode: {}
+decode_tuned_on: inherit
+preprocess_override: null
+live_rank: 3

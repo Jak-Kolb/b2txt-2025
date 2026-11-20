@@ -24,8 +24,8 @@ The viewer listens on 127.0.0.1 only; from another machine, reach it through an 
 
 A pipeline is an acoustic model + preprocessing + LM graph + eight native decode settings.
 Presets live in `registry/pipelines/`; components in `registry/acoustic/` and `registry/lm/`.
-`registry/MODELS.md` explains how acoustic models are named and lists every trained model with its letter ID.
-A preset is named `<letter ID>_<LM>`: `A2_gen4g` is model A2 with the general 4-gram.
+`registry/MODELS.md` explains how acoustic models are named and lists every training run with its run ID.
+A preset is named `<recipe ID>_<LM>`: `A2_gen4g` is run A2_1 (best-validation weights) with the general 4-gram.
 Ad-hoc compositions: `bench --acoustic gru768_pall_f80_sm80_120k_s10_bestval --lm gen4g --decode acoustic_scale=0.5`.
 Preprocessing is the model's training smoothing; `--preprocess smooth_lookahead=2` is allowed
 but flagged `preprocess_mismatch`. Decode settings depend on the acoustic model; a preset
@@ -70,6 +70,12 @@ block-z-scored features; not spike times), spike-band power, per-array activity,
 electrode traces, the greedy phoneme stream, partial and final text beside the reference
 (hidden in blind mode; the engine never sees it), and frame processing lag. Speeds other than
 1x, or playback during a benchmark, are labeled display only.
+
+The preset list opens with the current best (presets with `live_rank`: `Y6_gen4g`, `D1_gen4g`, `G2_gen4g`), then the
+earlier presets. Models appear by full name with their ID from `registry/MODELS.md` in parentheses ("Y6_1 avg"); models
+the streaming decoder cannot run (attention look-ahead, convolution blocks, bidirectional, symmetric smoothing) are
+listed but disabled, with the reason. The live text is the WFST decoder's output alone: the LLM ranker, the CTC ensemble
+and word familiarity of the live-word results (`learning/live_eval/`) are offline replays and do not run here.
 
 "Speak words aloud" reads the decoded words through the browser's speech synthesis, so the audio plays on
 the machine showing the page. A word is spoken once the clock-A commit rule finalizes it (`sil+1`: 80 ms
@@ -161,7 +167,8 @@ Runs never overwrite; a failed run keeps its files and a `traceback.txt`.
 
 ## Resources
 
-One benchmark at a time (`locks/job.lock`). The timing check, paced runs, and live trials
+One benchmark at a time (`locks/job.lock`), except CPU-only accuracy runs with `--no-job-lock` (bench: also
+`--no-timing-check`; sweep), which time nothing and use no GPU, so two decoders can run side by side. The timing check, paced runs, and live trials
 never overlap (`locks/paced.lock`). An LM process starts only if MemAvailable exceeds its
 expected RSS + 2 GB (the general 4-gram needs about 8.5 GB of the machine's 27 GB).
 

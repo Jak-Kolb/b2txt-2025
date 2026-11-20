@@ -48,8 +48,10 @@ class ServerTests(AioHTTPTestCase):
         self.assertIsNotNone(row["wer"])
         self.assertIsNotNone(row["lag_p95_ms"])
         self.assertEqual(row["lag_kind"], "simulated")
+        self.assertIn("acoustic_id", row)          # None here: the fixture registry has no MODELS.md
         detail = await (await self.client.get(f"/api/runs/{self.full_a}")).json()
         self.assertEqual(detail["manifest"]["status"], "complete")
+        self.assertIn("acoustic_id", detail)
         trials = await (await self.client.get(f"/api/runs/{self.full_a}/trials")).json()
         self.assertEqual(len(trials), 8)
         self.assertEqual({t["corpus"] for t in trials}, {"Switchboard", "Random"})
@@ -109,6 +111,7 @@ class ServerTests(AioHTTPTestCase):
         self.assertEqual((await self.client.get("/static/js/app.js")).status, 200)
         registry_view = await (await self.client.get("/api/registry")).json()
         self.assertIn("tiny_fake", registry_view["pipelines"])
+        self.assertEqual(set(registry_view["acoustic_info"]), set(registry_view["acoustic"]))
 
 
 class ImportTests(unittest.TestCase):

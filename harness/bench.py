@@ -8,6 +8,7 @@ a queue simulation against the 20 ms schedule. Paced (1x) measurement is `run_pa
 """
 from __future__ import annotations
 
+import contextlib
 from datetime import datetime, timezone
 import json
 import os
@@ -181,7 +182,11 @@ def fail(run_dir, manifest, exc):
 
 def run_standard(spec, *, root=DEFAULT_ROOT, data_dir=DATA_DIR, scope_name="val-dev-full", limit=None,
                  allow_exposed=None, timing_check=True, device="cuda", lm_python=DEFAULT_LM_PYTHON,
-                 log=print, tier="standard"):
+                 log=print, tier="standard", job_lock=True):
+    """job_lock=False lets a CPU-only accuracy run go beside another benchmark: it times nothing and uses no GPU;
+    the LM RAM guard still applies."""
+    if not job_lock and (timing_check or device != "cpu"):
+        raise ValueError("job_lock=False needs device='cpu' and no timing check")
     root = Path(root)
     hasher = HashCache(root)
     identity = registry.identity(spec, hasher)
@@ -195,7 +200,7 @@ def run_standard(spec, *, root=DEFAULT_ROOT, data_dir=DATA_DIR, scope_name="val-
     else:
         timing_scope = build_scope("val-dev-sample", data_dir, limit, None, hasher)
     flags = registry.flags(spec, scope["partition"], limited=limit is not None)
-    with flocked(lock_path(root, "job"), blocking=False):
+    with flocked(lock_path(root, "job"), blocking=False) if job_lock else contextlib.nullcontext():
         run_dir = new_run_dir(root, spec["name"], tier)
         manifest = base_manifest(run_dir, tier, spec, identity, scope, flags, lm_python)
         manifest["timing_scope"] = scope_record(timing_scope) if timing_scope else None

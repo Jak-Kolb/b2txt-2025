@@ -129,6 +129,22 @@ class RegistryTests(unittest.TestCase):
             self.assertIn(preset["acoustic"], names)
             self.assertIn(preset["lm"], loaded["lm"])
 
+    def test_real_registry_ids_and_live_flags(self):
+        loaded = registry.load_all()
+        info = registry.describe_acoustic(loaded["acoustic"])
+        self.assertEqual(info["tfm384x5_lb_p20000_f80_sm80_noday_v2_63k_s10_avg"]["id"], "Y6_1 avg")
+        self.assertEqual(info["gru1344_pall_f0_20k_s10"]["id"], "D1_1")                 # final snapshot: run ID alone
+        self.assertEqual(info["gru768_pall_f0_120k_s10_bestval"]["id"], "A2_1 bestval")
+        self.assertEqual([n for n, v in info.items() if v["id"] is None], [])          # MODELS.md lists every model
+        self.assertEqual(registry.acoustic_ids()["la1344_r2_s10_final"], "G2_1")      # saved runs' former names too
+        self.assertTrue(info["tfm384x5_lb_p20000_f80_sm80_noday_v2_63k_s10_avg"]["live"])          # Y6 streams
+        self.assertFalse(info["tfm384x5_lb_p20000_f160_noday_v2_63k_s10_avg"]["live"])             # Y7: attention look-ahead
+        self.assertFalse(info["gru768_pall_f80_sm80_upstream_120k_s10_bestval"]["live"])           # A0: symmetric smoothing
+        ranked = sorted((p["live_rank"], n) for n, p in loaded["pipelines"].items() if "live_rank" in p)
+        self.assertEqual([n for _, n in ranked][:1], ["Y6_gen4g"])
+        for _, name in ranked:                     # the live player's current presets can all be loaded live
+            self.assertTrue(info[loaded["pipelines"][name]["acoustic"]]["live"], name)
+
 
 class ScopeTests(unittest.TestCase):
     @classmethod

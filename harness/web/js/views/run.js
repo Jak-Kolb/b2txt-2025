@@ -3,10 +3,10 @@ import { diffLegend, diffLine, el, fmt, fmtCI, flagBadges, FLAG_TEXT, getJSON, k
 import { cdfPlot, dotPlot, lineLegend } from "../charts.js";
 
 export async function runView(main, runId) {
-  const { manifest, summary } = await getJSON(`/api/runs/${encodeURIComponent(runId)}`);
+  const { manifest, summary, acoustic_id: acousticId } = await getJSON(`/api/runs/${encodeURIComponent(runId)}`);
   const spec = manifest.pipeline;
   const header = [
-    el("h1", { text: spec.name }),
+    el("h1", { text: `${spec.name}${acousticId ? ` (${acousticId})` : ""}` }),
     el("div", { class: "sub", text: `${manifest.run_id} · ${manifest.tier} · ${shortTime(manifest.created)} UTC · `
       + `git ${manifest.code.head.slice(0, 8)}${manifest.code.dirty ? " (dirty)" : ""}` }),
     el("div", { class: "row" }, el("span", { class: `status-${manifest.status}`, text: manifest.status }), flagBadges(manifest.flags)),
