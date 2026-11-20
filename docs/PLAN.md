@@ -175,7 +175,15 @@ memory at batch 4 x 4 (2.65 s per step from the start); restarted at batch 2 x 8
 6.07, mean 6.08 vs 6.11; split values 6.08 / 6.05 / 6.02 / 6.17), worse at 500 ms (mean 6.46). Against (3), its control,
 the confidence lowers 1.5 s on all four splits (mean 6.21 -> 6.08) with the same pick accuracy. Shown numbers unchanged:
 8.06 / 6.39 / 6.07. Next candidate: the combined recipe on folds 0-3 with `--conf` (about 1.5 h at batch 2 x 8). If the
-five-fold cost (+0.10) and the confidence gain (-0.13) add up, 1.5 s would be about 5.98.
+five-fold cost (+0.10) and the confidence gain (-0.13) add up, 1.5 s would be about 5.98. Running from 15:04 EST.
+**Toward 6% at 500 ms (queued 2026-11-20 afternoon, no training; `results/harness/queue/waits_avg_20261120.py`).** At
+500 ms the 529 errors are 304 misranked words and 190 never offered. (1) **Use the waits the budget allows:** 500 ms
+commits at D 0 (98.3% of words in time) and 1.5 s at D 10 (Y7_1's old timing). Without LLMs, D 1 and D 12 stay inside
+the 95% rule and were worth -0.10 / -0.18. New list set at D 1 / 12, scored through the whole system with the current
+selectors. (2) **Y6_1 avg and Y6_2 avg averaged frame by frame into one decider** (same recipe and timing; better lists
+would act on the never-offered words). Sentence-end gate first: it goes to the live pipeline if it is at least 0.3
+below the better single run (<= 6.65). If it passes, two more Y6 runs (about 110 min each) for a four-way average.
+Training a new acoustic recipe is last: recipe changes have not moved live WER since October.
  LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
 run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms
