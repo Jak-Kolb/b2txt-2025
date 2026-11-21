@@ -1,0 +1,11 @@
+name: tfm512x6_lb_p20000_f80_sm80_noday_v2_mask5f_63k_s10
+checkpoint_dir: model_training/trained_models/tfm512x6_lb_p20000_f80_sm80_noday_v2_mask5f_63k_s10_20261121T192454Z/snapshot_final
+description: "Fixed final snapshot (batch 62999) of tfm512x6_lb_p20000_f80_sm80_noday_v2_mask5f_63k_s10. 63000-batch step schedule (x0.1 at batch 37800), fixed final snapshot (batch 62999, chosen before training; no checkpoint selection); val-dev greedy PER and WER at acoustic scales 0.2 / 0.25 / 0.3 / 0.4 / 0.5 at gen4g."
+training:
+  config: results/harness/train/20261121T192454Z_tfm512x6_lb_p20000_f80_sm80_noday_v2_mask5f_63k_s10/config.yaml
+  log: model_training/trained_models/tfm512x6_lb_p20000_f80_sm80_noday_v2_mask5f_63k_s10_20261121T192454Z/training_log
+  forked_from: gru768_pall_f0_120k_s10_bestval
+  overrides: []
+selection:
+  rule: "fixed final snapshot (batch 62999), chosen before training; no checkpoint selection"
+  data: [none]
