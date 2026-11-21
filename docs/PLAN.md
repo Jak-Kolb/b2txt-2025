@@ -231,6 +231,16 @@ recipe mean (avg) **6.35** (6.54 / 6.15) vs Y6 6.96: **passes the rule** (<= 6.6
 - 0.15). Added before any V1 live result: V1_2 avg through the same full pipeline after V1_1 avg (`v1_live_20261121.py
 --decider s11`), so the recipe's live result is the mean of its two runs; the replace rule stays on V1_1 avg. V2 starts
 after it (about 2:00 PM), then U1 and T1.
+**V1_1 avg live result (13:16 EST; `results/harness/queue/20261121T143527Z_v1_live/`; full system, standard / random
+splits 1-3):** 500 ms D 0 **5.97** (5.97 / 5.79 / 5.82 / 6.05, mean 5.91; Y6 6.39, mean 6.41), 96.8% of words within
+500 ms, mean delay 276 ms (Y6 203). 1.5 s: D 13 keeps only 94.0% (fails), so by the rule the wait is D 12: **5.80** (5.80
+/ 5.67 / 5.80 / 5.87, mean 5.78; Y6 at D 13 5.99, mean 6.07), 97.7% within, mean delay 1,226 ms. D 14 83.4%. One model
+(the per-limit selector): 6.62 / 6.55 (Y6 7.29 / 6.96). Without the selector: 6.63 / 6.26. **Rule met at both limits:
+V1_1 avg is the 500 ms and 1.5 s decider; both are under 6% on the standard split and on the mean of four splits.** V1
+marks each word about one 80 ms frame later than Y6 (delays about 78 ms longer at every wait), so its D 12 has Y6's
+D 13 timing. The selectors were trained on Y6 decisions and used unchanged. Queued before V2
+(`v1_extras_20261121.py`): V1's one-model cells with the separate 3B (chart 03, README) and GPT-2 rescoring of V1_1 /
+V1_2 avg; charts and README regenerated after it.
  LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
 run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms
