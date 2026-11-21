@@ -165,7 +165,7 @@ Retired recipe numbers: A6, A8, A9, C2, D2, D4, D5, G13, G14, G15, Y9, Y10, Y14.
 3. Give it its ID. A new configuration gets the next free recipe number of its letter and run number 1; a new
    seed or a retrain of an existing recipe gets that recipe's next run number. It gets a new letter only if the
    network part is new; then add the letter to the Letters table. Next free recipe numbers: A12, B3, C5, D6, E2, F22,
-   G18, V1, W1, X10, Y15, Z3.
+   G18, V2, W2, X10, Y16, Z3.
 4. In the same step as registering it, add its row to the table of its letter: run ID, full name, weights, start date
    and a short note. Remove it from "Planned runs" if it was listed there.
 
@@ -183,8 +183,8 @@ Retired recipe numbers: A6, A8, A9, C2, D2, D4, D5, G13, G14, G15, Y9, Y10, Y14.
 | X | `tfm384x8_conv` | Transformer, width 384, 8 layers, a causal convolution in every block | 2026-10-26 |
 | Y | `tfm384x5_lb` | Transformer, width 384, 5 layers, LightBeam style | 2026-10-16 |
 | Z | `tfm512x8` | Transformer, width 512, 8 layers | 2026-09-28 |
-| W | `tfm384x5_lb_conv` | Transformer, width 384, 5 layers, LightBeam style, a causal convolution in every block | planned 2026-11-20 |
-| V | `tfm512x6_lb` | Transformer, width 512, 6 layers, LightBeam style | planned 2026-11-20 |
+| W | `tfm384x5_lb_conv` | Transformer, width 384, 5 layers, LightBeam style, a causal convolution in every block | 2026-11-20 |
+| V | `tfm512x6_lb` | Transformer, width 512, 6 layers, LightBeam style | 2026-11-20 |
 
 The next new GRU architecture is H. The next new Transformer architecture is U.
 
@@ -318,6 +318,18 @@ One row per training run, grouped by recipe. "Weights" lists what is registered 
 | G16_1 | `gru1344_head256_pall_f160_splice_20k_s10` | final, avg, bestval | - | 2026-11-11 | The G2 recipe with phrase splicing (probability 0.3). Best WER 7.70 / 7.71 (final / avg) vs G2_4 7.77 / 7.94: keep rule not met. |
 | G17_1 | `gru1344_head256_pall_f160_diph_20k_s10` | final, avg, bestval | - | 2026-11-11 | The G2 recipe with the diphone auxiliary target (weight 0.3). Best WER 8.37 / 8.24: worse than G2_4. |
 
+### V: Transformer, width 512, 6 layers, LightBeam style
+
+| Run | Full name | Weights | Old name | Started | Notes |
+|---|---|---|---|---|---|
+| V1_1 | `tfm512x6_lb_p20000_f80_sm80_noday_v2_63k_s10` | final, avg, bestval | - | 2026-11-20 | Y6's recipe at width 512, 6 layers, 8 heads (20.0M parameters; Y6 9.7M). Best WER 6.77 / 6.54 at scale 0.3 (Y6_1 7.27 / 6.97; Y6_2 6.95 / 6.95); greedy PER 6.98 / 6.85 (Y6_1 8.07 / 7.95); never-seen-word phoneme error 33.2 / 33.1 (Y6_1 / Y6_2 avg 35.3 / 36.2). V1_2 (seed 11, data seed 2) training since 2026-11-21. |
+
+### W: Transformer, width 384, 5 layers, LightBeam style, a causal convolution in every block
+
+| Run | Full name | Weights | Old name | Started | Notes |
+|---|---|---|---|---|---|
+| W1_1 | `tfm384x5_lb_conv_p20000_f80_sm80_noday_v2_63k_s10` | final, avg, bestval | - | 2026-11-20 | Y6's recipe with a causal convolution module (9 frames, past only) in every block. Diverged after warmup: best in-training val PER 0.34 at batch 1,000, then rising, blank-only output from about batch 16,000 (greedy PER 95.0, WER 96.3). Y6's lr 0.002 and gradient clip 100 (X runs: 0.001, 10) are the likely cause. W1_2 (seed 11) diverged the same way and was stopped at batch 25,000 of 63,000 (run folder `20261121T125823Z`); not registered. |
+
 ### X: Transformer, width 384, 8 layers, a causal convolution in every block
 
 | Run | Full name | Weights | Old name | Started | Notes |
@@ -354,6 +366,8 @@ One row per training run, grouped by recipe. "Weights" lists what is registered 
 | Y11_1 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_tx_63k_s10` | final, avg, bestval | - | 2026-11-18 | The Y6 recipe on the 256 threshold-crossing features only, as an ensemble member. Greedy val-dev PER 11.80 / 11.62 (Y6_1 8.07 / 7.95). |
 | Y12_1 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_sbp_63k_s10` | final, avg, bestval | - | 2026-11-18 | The Y6 recipe on the 256 spike-band-power features only, as an ensemble member. Greedy val-dev PER 8.33 / 8.26. |
 | Y13_1 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_mask5f_63k_s10` | final, avg, bestval | - | 2026-11-18 | The Y6 recipe with Y4's time masks (at most 5 frames each). Best WER 8.03 / 8.01 at scale 0.25 (Y6_1 7.27 / 6.97); word ends earlier (own-boundary p95 120 vs 360 ms). Keep rule not met. |
+| Y15_1 | `tfm384x5_lb_p2000_f80_sm80_noday_v2_63k_s10` | final, avg, bestval | - | 2026-11-20 | Y6's recipe with a 2 s attention window per layer (25 frames, 1-2 s drawn in training; Y6 250, 5-20 s). Best WER 7.39 / 7.09 at scale 0.3 (Y6_1 7.27 / 6.97); greedy PER 8.17 / 8.13 (Y6_1 8.07 / 7.95); never-seen-word phoneme error 34.4 / 34.9 (Y6_1 avg 35.3). |
+| Y15_2 | `tfm384x5_lb_p2000_f80_sm80_noday_v2_63k_s11` | final, avg, bestval | - | 2026-11-21 | Second run of Y15 (seed 11, data seed 2). Scored after V1_2. |
 
 ### Z: Transformer, width 512, 8 layers
 
@@ -368,11 +382,4 @@ Prepared in `results/harness/queue/` and not trained. Each takes the next free n
 training starts. New tags: `v2` (the 2026-11-11 corrections to the LightBeam reproduction), `crctc` (CR-CTC
 consistency loss, weight 0.2), `splice` (phrase splicing), `diph` (diphone targets).
 
-Queued 2026-11-20 evening (`results/harness/queue/tfm_arch_20261120.py`; Y6_1's recipe with one change each; two
-runs per recipe, seeds 10 / 1 and 11 / 2 as Y6_1 / Y6_2):
-
-| Recipe | Full name (run 1; run 2 ends `_s11`) | Change from Y6 |
-|---|---|---|
-| Y15 | `tfm384x5_lb_p2000_f80_sm80_noday_v2_63k_s10` | Attention window 25 frames (2 s) per layer, 1-2 s drawn in training (Y6: 250, 5-20 s) |
-| W1 | `tfm384x5_lb_conv_p20000_f80_sm80_noday_v2_63k_s10` | A causal convolution module (9 frames) in every block |
-| V1 | `tfm512x6_lb_p20000_f80_sm80_noday_v2_63k_s10` | Width 512, 6 layers, 8 heads (20.0M parameters; Y6 9.7M) |
+None at present.

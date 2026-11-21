@@ -205,6 +205,16 @@ block), V1 (512 wide, 6 layers), two runs each (seeds as Y6_1 / Y6_2), about 19 
 6.07; without the selector 6.49); D 14 keeps only 92.5% (fails; 6.05). By the rule fixed beforehand the 1.5 s rule is
 D 13: 5.99, mean delay 1,227 ms (D 12 gave 5.96 / mean 6.06, not used: choosing it for its WER would be selection on
 val-dev). README, charts 06 and 12 updated.
+**(b) first runs (2026-11-21 09:15 EST; val-dev, 1,253 sentences; one run each, final / avg weights; best 4-gram WER
+over scales 0.2-0.5, greedy PER, never-seen-word phoneme error):** V1_1 (512 x 6) **6.77 / 6.54**, PER 6.98 / 6.85,
+never-seen 33.2 / 33.1 (Y6_1 7.27 / 6.97, 8.07 / 7.95, 35.3; Y6_2 avg 6.95, 7.65, 36.2); better in every familiarity
+bin (seen 1-4 times 19.7 vs 24.1 / 22.2). Y15_1 (2 s window) 7.39 / 7.09, PER 8.17 / 8.13, never-seen 34.4 / 34.9:
+the short window did not help unseen words. W1_1 (conv) diverged after warmup (best in-training val PER at batch
+1,000, then blank-only output from about batch 16k; WER 96); W1_2 diverged the same way and was stopped at batch 25k.
+Y6's lr 0.002 and gradient clip 100 are twice / ten times the X conv runs' settings, the likely cause. Relaunched
+09:04 EST as `tfm_arch_20261120.py --seeds s11 --trained win2s win2s d512`: V1_2 training (about 2.5 h), then scoring
+of Y15_2 and V1_2, done around 12:30 PM. V1 passes the rule if V1_2 avg is at most 6.78 (recipe mean <= 6.66). Not
+re-run: conv at a lower learning rate (a recipe change; for the user).
  LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
 run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms
