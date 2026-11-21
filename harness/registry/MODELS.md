@@ -333,7 +333,7 @@ One row per training run, grouped by recipe. "Weights" lists what is registered 
 
 | Run | Full name | Weights | Old name | Started | Notes |
 |---|---|---|---|---|---|
-| W1_1 | `tfm384x5_lb_conv_p20000_f80_sm80_noday_v2_63k_s10` | final, avg, bestval | - | 2026-11-20 | Y6's recipe with a causal convolution module (9 frames, past only) in every block. Diverged after warmup: best in-training val PER 0.34 at batch 1,000, then rising, blank-only output from about batch 16,000 (greedy PER 95.0, WER 96.3). Y6's lr 0.002 and gradient clip 100 (X runs: 0.001, 10) are the likely cause. W1_2 (seed 11) diverged the same way and was stopped at batch 25,000 of 63,000 (run folder `20261121T125823Z`); not registered. |
+| W1_1 | `tfm384x5_lb_conv_p20000_f80_sm80_noday_v2_63k_s10` | final, avg, bestval | - | 2026-11-20 | Y6's recipe with a causal convolution module (9 frames, past only) in every block. Diverged after warmup: best in-training val PER 0.34 at batch 1,000, then rising, blank-only output from about batch 16,000 (greedy PER 95.0, WER 96.3). Y6's lr 0.002 and gradient clip 100 (X runs: 0.001, 10) are the likely cause. W1_2 (seed 11) diverged the same way and was stopped at batch 26,400 of 63,000 (run folder `20261121T125823Z`); not registered. |
 
 ### X: Transformer, width 384, 8 layers, a causal convolution in every block
 

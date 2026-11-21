@@ -210,7 +210,7 @@ over scales 0.2-0.5, greedy PER, never-seen-word phoneme error):** V1_1 (512 x 6
 never-seen 33.2 / 33.1 (Y6_1 7.27 / 6.97, 8.07 / 7.95, 35.3; Y6_2 avg 6.95, 7.65, 36.2); better in every familiarity
 bin (seen 1-4 times 19.7 vs 24.1 / 22.2). Y15_1 (2 s window) 7.39 / 7.09, PER 8.17 / 8.13, never-seen 34.4 / 34.9:
 the short window did not help unseen words. W1_1 (conv) diverged after warmup (best in-training val PER at batch
-1,000, then blank-only output from about batch 16k; WER 96); W1_2 diverged the same way and was stopped at batch 25k.
+1,000, then blank-only output from about batch 16k; WER 96); W1_2 diverged the same way and was stopped at batch 26.4k.
 Y6's lr 0.002 and gradient clip 100 are twice / ten times the X conv runs' settings, the likely cause. Relaunched
 09:04 EST as `tfm_arch_20261120.py --seeds s11 --trained win2s win2s d512`: V1_2 training (about 2.5 h), then scoring
 of Y15_2 and V1_2, done around 12:30 PM. V1 passes the rule if V1_2 avg is at most 6.78 (recipe mean <= 6.66). Not
