@@ -225,6 +225,12 @@ Transformer decider; through the 200 ms full pipeline if its best WER (avg) is b
 below 8.06 there with 95% of words within 200 ms. (3) U1 (640 x 6, 30.9M) and T1 (512 x 8, 26.3M), one run each,
 scored as each finishes; a second run if run 1 is at least 0.15 below V1's recipe mean. Training about 2.5 / 3.4 / 3.2 h;
 all done around 1 AM Sunday.
+**(b) second runs (12:25 EST):** V1_2 **6.05 / 6.15** (final / avg), PER 6.79 / 6.67, never-seen 32.7 / 32.8. V1's
+recipe mean (avg) **6.35** (6.54 / 6.15) vs Y6 6.96: **passes the rule** (<= 6.66). Y15_2 7.16 / 7.14, never-seen 34.0 /
+33.9; Y15's mean 7.12, never-seen 34.4: not passed. U1 / T1 get a second run if run 1 (avg) is at most 6.20 (V1's mean
+- 0.15). Added before any V1 live result: V1_2 avg through the same full pipeline after V1_1 avg (`v1_live_20261121.py
+--decider s11`), so the recipe's live result is the mean of its two runs; the replace rule stays on V1_1 avg. V2 starts
+after it (about 2:00 PM), then U1 and T1.
  LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
 run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms

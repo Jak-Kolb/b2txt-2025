@@ -326,7 +326,8 @@ One row per training run, grouped by recipe. "Weights" lists what is registered 
 
 | Run | Full name | Weights | Old name | Started | Notes |
 |---|---|---|---|---|---|
-| V1_1 | `tfm512x6_lb_p20000_f80_sm80_noday_v2_63k_s10` | final, avg, bestval | - | 2026-11-20 | Y6's recipe at width 512, 6 layers, 8 heads (20.0M parameters; Y6 9.7M). Best WER 6.77 / 6.54 at scale 0.3 (Y6_1 7.27 / 6.97; Y6_2 6.95 / 6.95); greedy PER 6.98 / 6.85 (Y6_1 8.07 / 7.95); never-seen-word phoneme error 33.2 / 33.1 (Y6_1 / Y6_2 avg 35.3 / 36.2). V1_2 (seed 11, data seed 2) training since 2026-11-21. |
+| V1_1 | `tfm512x6_lb_p20000_f80_sm80_noday_v2_63k_s10` | final, avg, bestval | - | 2026-11-20 | Y6's recipe at width 512, 6 layers, 8 heads (20.0M parameters; Y6 9.7M). Best WER 6.77 / 6.54 at scale 0.3 (Y6_1 7.27 / 6.97; Y6_2 6.95 / 6.95); greedy PER 6.98 / 6.85 (Y6_1 8.07 / 7.95); never-seen-word phoneme error 33.2 / 33.1 (Y6_1 / Y6_2 avg 35.3 / 36.2). |
+| V1_2 | `tfm512x6_lb_p20000_f80_sm80_noday_v2_63k_s11` | final, avg, bestval | - | 2026-11-21 | Second run of V1 (seed 11, data seed 2). Best WER 6.05 / 6.15 at scale 0.3 (V1_1 6.77 / 6.54); greedy PER 6.79 / 6.67; never-seen-word phoneme error 32.7 / 32.8. Recipe mean (avg) 6.35 vs Y6 6.96: passes the rule set before training (<= 6.66). |
 
 ### W: Transformer, width 384, 5 layers, LightBeam style, a causal convolution in every block
 
@@ -371,7 +372,7 @@ One row per training run, grouped by recipe. "Weights" lists what is registered 
 | Y12_1 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_sbp_63k_s10` | final, avg, bestval | - | 2026-11-18 | The Y6 recipe on the 256 spike-band-power features only, as an ensemble member. Greedy val-dev PER 8.33 / 8.26. |
 | Y13_1 | `tfm384x5_lb_p20000_f80_sm80_noday_v2_mask5f_63k_s10` | final, avg, bestval | - | 2026-11-18 | The Y6 recipe with Y4's time masks (at most 5 frames each). Best WER 8.03 / 8.01 at scale 0.25 (Y6_1 7.27 / 6.97); word ends earlier (own-boundary p95 120 vs 360 ms). Keep rule not met. |
 | Y15_1 | `tfm384x5_lb_p2000_f80_sm80_noday_v2_63k_s10` | final, avg, bestval | - | 2026-11-20 | Y6's recipe with a 2 s attention window per layer (25 frames, 1-2 s drawn in training; Y6 250, 5-20 s). Best WER 7.39 / 7.09 at scale 0.3 (Y6_1 7.27 / 6.97); greedy PER 8.17 / 8.13 (Y6_1 8.07 / 7.95); never-seen-word phoneme error 34.4 / 34.9 (Y6_1 avg 35.3). |
-| Y15_2 | `tfm384x5_lb_p2000_f80_sm80_noday_v2_63k_s11` | final, avg, bestval | - | 2026-11-21 | Second run of Y15 (seed 11, data seed 2). Scored after V1_2. |
+| Y15_2 | `tfm384x5_lb_p2000_f80_sm80_noday_v2_63k_s11` | final, avg, bestval | - | 2026-11-21 | Second run of Y15 (seed 11, data seed 2). Best WER 7.16 / 7.14 at scale 0.4 / 0.3; greedy PER 7.64 / 7.61; never-seen-word phoneme error 34.0 / 33.9. Recipe mean (avg) 7.12 vs Y6 6.96, never-seen 34.4 vs 35.75: rule not met. |
 
 ### Z: Transformer, width 512, 8 layers
 
