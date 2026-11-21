@@ -215,6 +215,16 @@ Y6's lr 0.002 and gradient clip 100 are twice / ten times the X conv runs' setti
 09:04 EST as `tfm_arch_20261120.py --seeds s11 --trained win2s win2s d512`: V1_2 training (about 2.5 h), then scoring
 of Y15_2 and V1_2, done around 12:30 PM. V1 passes the rule if V1_2 avg is at most 6.78 (recipe mean <= 6.66). Not
 re-run: conv at a lower learning rate (a recipe change; for the user).
+**Queued 2026-11-21 09:35 EST (user: "okay try V2. also score V1 with the full pipeline. and yes"; the user is away all
+weekend, so runs may go at any hour), one after the other:** (1) `results/harness/queue/v1_live_20261121.py`: V1_1 avg
+as the decider in Y6_1 avg's place, nothing else changed (scale 0.3, same members, LLMs and selectors), D 0 at 500 ms
+and D 12 / 13 / 14 at 1.5 s, four session splits; about 40 min. Rule: V1_1 avg replaces Y6_1 avg at a limit if its
+full-system WER, mean of four splits, is lower at that limit's rule wait (1.5 s: the longest inside the 95% rule) with
+at least 95% of words in time. (2) V2 (`tfm_arch_20261120.py d512mask5f`): V1 + Y13's short time masks, for a 200 ms
+Transformer decider; through the 200 ms full pipeline if its best WER (avg) is below Y13's 8.01, replacing D1_1 if
+below 8.06 there with 95% of words within 200 ms. (3) U1 (640 x 6, 30.9M) and T1 (512 x 8, 26.3M), one run each,
+scored as each finishes; a second run if run 1 is at least 0.15 below V1's recipe mean. Training about 2.5 / 3.4 / 3.2 h;
+all done around 1 AM Sunday.
  LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
 run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms

@@ -48,6 +48,8 @@ Times are in ms. The models step through the signal in frames 80 ms apart.
 | `tfm384x5_lb` | Transformer, width 384, 5 layers, LightBeam style: frames of 80 ms that do not overlap and a learned mask token |
 | `tfm384x5_lb_conv` | `tfm384x5_lb` with a causal convolution (9 frames, past only) in every block |
 | `tfm512x6_lb` | Transformer, width 512, 6 layers, LightBeam style |
+| `tfm640x6_lb` | Transformer, width 640, 6 layers, LightBeam style |
+| `tfm512x8_lb` | Transformer, width 512, 8 layers, LightBeam style |
 
 ### Past: `pall` or a number
 
@@ -165,7 +167,7 @@ Retired recipe numbers: A6, A8, A9, C2, D2, D4, D5, G13, G14, G15, Y9, Y10, Y14.
 3. Give it its ID. A new configuration gets the next free recipe number of its letter and run number 1; a new
    seed or a retrain of an existing recipe gets that recipe's next run number. It gets a new letter only if the
    network part is new; then add the letter to the Letters table. Next free recipe numbers: A12, B3, C5, D6, E2, F22,
-   G18, V2, W2, X10, Y16, Z3.
+   G18, T1, U1, V2, W2, X10, Y16, Z3.
 4. In the same step as registering it, add its row to the table of its letter: run ID, full name, weights, start date
    and a short note. Remove it from "Planned runs" if it was listed there.
 
@@ -185,8 +187,10 @@ Retired recipe numbers: A6, A8, A9, C2, D2, D4, D5, G13, G14, G15, Y9, Y10, Y14.
 | Z | `tfm512x8` | Transformer, width 512, 8 layers | 2026-09-28 |
 | W | `tfm384x5_lb_conv` | Transformer, width 384, 5 layers, LightBeam style, a causal convolution in every block | 2026-11-20 |
 | V | `tfm512x6_lb` | Transformer, width 512, 6 layers, LightBeam style | 2026-11-20 |
+| U | `tfm640x6_lb` | Transformer, width 640, 6 layers, LightBeam style | planned 2026-11-21 |
+| T | `tfm512x8_lb` | Transformer, width 512, 8 layers, LightBeam style | planned 2026-11-21 |
 
-The next new GRU architecture is H. The next new Transformer architecture is U.
+The next new GRU architecture is H. The next new Transformer architecture is S.
 
 ## Pipeline presets
 
@@ -382,4 +386,11 @@ Prepared in `results/harness/queue/` and not trained. Each takes the next free n
 training starts. New tags: `v2` (the 2026-11-11 corrections to the LightBeam reproduction), `crctc` (CR-CTC
 consistency loss, weight 0.2), `splice` (phrase splicing), `diph` (diphone targets).
 
-None at present.
+Queued 2026-11-21 (`results/harness/queue/tfm_arch_20261120.py`, arms d512mask5f, d640, d512x8; run 1 each, after V1_1's
+full-pipeline run; rules in the script):
+
+| Recipe | Full name | Change |
+|---|---|---|
+| V2 | `tfm512x6_lb_p20000_f80_sm80_noday_v2_mask5f_63k_s10` | V1 with Y13's time masks (at most 5 frames each), for a 200 ms Transformer decider |
+| U1 | `tfm640x6_lb_p20000_f80_sm80_noday_v2_63k_s10` | Y6's recipe at width 640, 6 layers, 10 heads (30.9M parameters; V1 20.0M) |
+| T1 | `tfm512x8_lb_p20000_f80_sm80_noday_v2_63k_s10` | Y6's recipe at width 512, 8 layers, 8 heads (26.3M parameters) |
