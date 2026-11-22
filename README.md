@@ -14,7 +14,7 @@ shown within 200 ms, 500 ms or 1.5 s of the moment the participant finished atte
 | Time limit after the word ends | One model | Full system | Mean delay | Deciding model |
 |---|---|---|---|---|
 | 200 ms | 8.64% | 8.06% | 78 ms | GRU D1 (causal) |
-| 500 ms | 6.94% | **5.97%** | 276 ms | Transformer V1 |
+| 500 ms | 6.93% | **5.97%** | 276 ms | Transformer V1 |
 | 1.5 s | 6.51% | **5.80%** | 1,226 ms | Transformer V1 |
 | After the sentence (not the target) | 4.78% | 4.28% | - | 100 best sentences rescored: V1 with GPT-2 Large; Y6 with the full system |
 

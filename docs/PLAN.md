@@ -244,7 +244,7 @@ D 13 timing. The selectors were trained on Y6 decisions and used unchanged. Queu
 V1_2 avg; charts and README regenerated after it.
 **Overnight results (read 2026-11-22 14:42 EST):** V1_2 avg live 5.81 at 500 ms (mean 5.81, 98.2% within, mean delay 208
 ms) and 5.61 at 1.5 s D 13 (mean 5.56; D 13 is V1_2's longest wait inside the 95% rule). V1_1 avg one model with the
-separate 3B: 6.94 / 6.51 (Y6 7.42 / 7.15). GPT-2 rescoring: V1_1 avg 4.78, V1_2 avg 4.85. V2 6.86 (avg; passes its
+separate 3B: 6.93 / 6.51 (Y6 7.42 / 7.15). GPT-2 rescoring: V1_1 avg 4.78, V1_2 avg 4.85. V2 6.86 (avg; passes its
 gate), U1 (640 x 6) 6.74, T1 (512 x 8) 6.46: neither size step earns a second run (rule <= 6.20). **V2 at 200 ms (15:15
 EST, `v2_200_20261122.py`):** full system 6.66 (mean 6.66) vs D1_1 8.06, but 91.0% of words within 200 ms (p95 233 ms;
 92.6% without the selector): the rule (95%) is not met; D1_1 stays. Charts, README, figures README and the 595 deck
