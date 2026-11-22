@@ -16,7 +16,8 @@ shown within 200 ms, 500 ms or 1.5 s of the moment the participant finished atte
 | 200 ms | 8.64% | 8.06% | 78 ms | GRU D1 (causal) |
 | 500 ms | 6.93% | **5.97%** | 276 ms | Transformer V1 |
 | 1.5 s | 6.51% | **5.80%** | 1,226 ms | Transformer V1 |
-| After the sentence (not the target) | 4.78% | 4.28% | - | 100 best sentences rescored: V1 with GPT-2 Large; Y6 with the full system |
+| After the sentence, D1's 100 best (not the target) | 5.76% | 5.46% | - | GRU D1 (causal) |
+| After the sentence, V1's 100 best (not the target) | 4.55% | 3.88% | - | Transformer V1 |
 
 A live result passes its time limit when 95% of words are final within it; a correct word that arrives late still
 counts as correct, and the mean delay shows the typical wait. The deciding acoustic model and its 4-gram decoder
@@ -42,11 +43,14 @@ ensemble, language models and selectors (trained on Y6's decisions and used unch
 averages 5.91% and 5.78%: under 6% on all four splits at 1.5 s and on three of four at 500 ms (6.05% on the fourth).
 V1 marks words about one 80 ms frame later than Y6, so at 1.5 s it commits 12 steps (0.96 s) after the word end, the
 longest wait that keeps 95% of words in time (97.7% are). A second training run of V1 gives 5.81% and 5.61% through
-the same pipeline. Going wider (640) or deeper (8 layers) than V1 did not help.
+the same pipeline (one model 6.68% and 6.27%; after the sentence 4.20% and 3.73%). Going wider (640) or deeper (8
+layers) than V1 did not help.
 
-After the sentence, a learned rescorer combines GPT-2 Large with the same inputs over Y6's 100 best sentences (GPT-2
-Large alone: 5.47% on Y6's list, 4.78% on V1's). The exact sentence is in Y6's list for 89% of sentences, and always
-picking the closest one would give 2.24%, so better choosing has room left.
+After the sentence, a learned rescorer re-ranks the deciding model's 100 best sentences with the same kinds of
+inputs: GPT-2 Large, the model's own scores and word familiarity for "one model", plus the CTC scores of that model's
+full-system ensemble for "full system" (V1's 1.5 s ensemble; D1's 11 causal GRUs). GPT-2 Large alone with fixed weights
+gives 4.78% on V1's list and 6.48% on D1's. Always picking the closest sentence in V1's list would give 1.84%, so better
+choosing has room left.
 
 D1 is a causal 1,344-unit GRU. Y6 is a 9.7M-parameter Transformer trained with the LightBeam recipe (Feghhi et al.
 2026) with 80 ms of look-ahead, and V1 is the same recipe at 20.0M parameters. Each result comes from one training run

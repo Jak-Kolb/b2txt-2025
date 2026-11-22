@@ -7,8 +7,9 @@ The 500 ms and 1.5 s decider is V1_1 avg, Y6's recipe at width 512 and 6 layers 
 avg gives 5.81 / 5.61 through the same pipeline (V1 recipe 5.89 / 5.70). The full system adds the CTC ensemble, GPT-2
 Large ft + OPT-2.7B, word familiarity and the fine-tuned Qwen2.5-3B phoneme-aware selector (one per limit, its time
 charged). At 200 ms the causal GRU D1_1 decides; V2_1 (V1 + Y13's short masks) reaches 6.66 there, but only 91.0% of its
-words are final within 200 ms, because list extraction and the two LLMs take too long. After the sentence, a learned
-rescorer over Y6's 100-best reaches 4.28% (GPT-2 Large alone: V1_1 avg 4.78, Y6_1 avg 5.47).
+words are final within 200 ms, because list extraction and the two LLMs take too long. After the sentence, the learned
+rescorer over V1_1 avg's 100-best reaches 3.88% (one model 4.55; GPT-2 Large alone 4.78; Y6_1 avg 4.28), and over
+D1_1's 5.46% (one model 5.76).
 
 **Reporting (2026-11-19, `current_knowledge.md` 1.4):** a budget is met when 95% of words are final within it; correct
 but late words then count as correct; every live number carries its mean delay; per budget, one model and the full
@@ -249,6 +250,9 @@ gate), U1 (640 x 6) 6.74, T1 (512 x 8) 6.46: neither size step earns a second ru
 EST, `v2_200_20261122.py`):** full system 6.66 (mean 6.66) vs D1_1 8.06, but 91.0% of words within 200 ms (p95 233 ms;
 92.6% without the selector): the rule (95%) is not met; D1_1 stays. Charts, README, figures README and the 595 deck
 updated to V1 (2026-11-22).
+**Four reporting cells (18:31 EST, `four_cells_20261122.py`):** every headline decider now has one model and full system,
+live and at sentence end. Learned sentence-end rescorer, one model / full system: D1_1 5.76 / 5.46, V1_1 avg 4.55 /
+**3.88**, V1_2 avg 4.20 / 3.73; V1_2 avg live one model 6.68 / 6.27 (`current_knowledge.md` 6.11).
 **Next at 200 ms (proposed, not queued):** V2's lists miss the rule on compute, not accuracy. (a) GPT-2 L ft in fp16 on
 V2's lists (fp32 now; OPT in fp16 left WER unchanged) and re-time; (b) a tighter selector gate or none; (c) a second run
 of V2 (V1's two runs differed by 0.39 in WER and V1_2 marked words earlier, 208 vs 276 ms mean delay at 500 ms). (a)
