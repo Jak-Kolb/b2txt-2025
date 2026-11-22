@@ -167,7 +167,7 @@ Retired recipe numbers: A6, A8, A9, C2, D2, D4, D5, G13, G14, G15, Y9, Y10, Y14.
 3. Give it its ID. A new configuration gets the next free recipe number of its letter and run number 1; a new
    seed or a retrain of an existing recipe gets that recipe's next run number. It gets a new letter only if the
    network part is new; then add the letter to the Letters table. Next free recipe numbers: A12, B3, C5, D6, E2, F22,
-   G18, T1, U1, V2, W2, X10, Y16, Z3.
+   G18, T2, U2, V3, W2, X10, Y16, Z3.
 4. In the same step as registering it, add its row to the table of its letter: run ID, full name, weights, start date
    and a short note. Remove it from "Planned runs" if it was listed there.
 
@@ -187,8 +187,8 @@ Retired recipe numbers: A6, A8, A9, C2, D2, D4, D5, G13, G14, G15, Y9, Y10, Y14.
 | Z | `tfm512x8` | Transformer, width 512, 8 layers | 2026-09-28 |
 | W | `tfm384x5_lb_conv` | Transformer, width 384, 5 layers, LightBeam style, a causal convolution in every block | 2026-11-20 |
 | V | `tfm512x6_lb` | Transformer, width 512, 6 layers, LightBeam style | 2026-11-20 |
-| U | `tfm640x6_lb` | Transformer, width 640, 6 layers, LightBeam style | planned 2026-11-21 |
-| T | `tfm512x8_lb` | Transformer, width 512, 8 layers, LightBeam style | planned 2026-11-21 |
+| U | `tfm640x6_lb` | Transformer, width 640, 6 layers, LightBeam style | 2026-11-21 |
+| T | `tfm512x8_lb` | Transformer, width 512, 8 layers, LightBeam style | 2026-11-21 |
 
 The next new GRU architecture is H. The next new Transformer architecture is S.
 
@@ -322,12 +322,25 @@ One row per training run, grouped by recipe. "Weights" lists what is registered 
 | G16_1 | `gru1344_head256_pall_f160_splice_20k_s10` | final, avg, bestval | - | 2026-11-11 | The G2 recipe with phrase splicing (probability 0.3). Best WER 7.70 / 7.71 (final / avg) vs G2_4 7.77 / 7.94: keep rule not met. |
 | G17_1 | `gru1344_head256_pall_f160_diph_20k_s10` | final, avg, bestval | - | 2026-11-11 | The G2 recipe with the diphone auxiliary target (weight 0.3). Best WER 8.37 / 8.24: worse than G2_4. |
 
+### T: Transformer, width 512, 8 layers, LightBeam style
+
+| Run | Full name | Weights | Old name | Started | Notes |
+|---|---|---|---|---|---|
+| T1_1 | `tfm512x8_lb_p20000_f80_sm80_noday_v2_63k_s10` | final, avg, bestval | - | 2026-11-21 | Y6's recipe at width 512, 8 layers, 8 heads (26.3M parameters; V1 20.0M), the depth step beyond V1. Best WER 6.67 / 6.46 at scale 0.3 / 0.25; greedy PER 6.99 / 6.85; never-seen-word phoneme error (avg) 32.5. Second run only if run 1 (avg) <= 6.20 (V1's mean - 0.15): not met. |
+
+### U: Transformer, width 640, 6 layers, LightBeam style
+
+| Run | Full name | Weights | Old name | Started | Notes |
+|---|---|---|---|---|---|
+| U1_1 | `tfm640x6_lb_p20000_f80_sm80_noday_v2_63k_s10` | final, avg, bestval | - | 2026-11-21 | Y6's recipe at width 640, 6 layers, 10 heads (30.9M parameters), the width step beyond V1. Best WER 6.79 / 6.74 at scale 0.4; greedy PER 7.25 / 7.08; never-seen-word phoneme error (avg) 35.4. Second run rule (<= 6.20) not met. |
+
 ### V: Transformer, width 512, 6 layers, LightBeam style
 
 | Run | Full name | Weights | Old name | Started | Notes |
 |---|---|---|---|---|---|
-| V1_1 | `tfm512x6_lb_p20000_f80_sm80_noday_v2_63k_s10` | final, avg, bestval | - | 2026-11-20 | Y6's recipe at width 512, 6 layers, 8 heads (20.0M parameters; Y6 9.7M). Best WER 6.77 / 6.54 at scale 0.3 (Y6_1 7.27 / 6.97; Y6_2 6.95 / 6.95); greedy PER 6.98 / 6.85 (Y6_1 8.07 / 7.95); never-seen-word phoneme error 33.2 / 33.1 (Y6_1 / Y6_2 avg 35.3 / 36.2). |
-| V1_2 | `tfm512x6_lb_p20000_f80_sm80_noday_v2_63k_s11` | final, avg, bestval | - | 2026-11-21 | Second run of V1 (seed 11, data seed 2). Best WER 6.05 / 6.15 at scale 0.3 (V1_1 6.77 / 6.54); greedy PER 6.79 / 6.67; never-seen-word phoneme error 32.7 / 32.8. Recipe mean (avg) 6.35 vs Y6 6.96: passes the rule set before training (<= 6.66). |
+| V1_1 | `tfm512x6_lb_p20000_f80_sm80_noday_v2_63k_s10` | final, avg, bestval | - | 2026-11-20 | Y6's recipe at width 512, 6 layers, 8 heads (20.0M parameters; Y6 9.7M). Best WER 6.77 / 6.54 at scale 0.3 (Y6_1 7.27 / 6.97; Y6_2 6.95 / 6.95); greedy PER 6.98 / 6.85 (Y6_1 8.07 / 7.95); never-seen-word phoneme error 33.2 / 33.1 (Y6_1 / Y6_2 avg 35.3 / 36.2). The 500 ms and 1.5 s live decider since 2026-11-22: full system 5.97 (D 0) / 5.80 (D 12) vs Y6_1 avg 6.39 / 5.99; one model 6.94 / 6.51; GPT-2 L rescoring at sentence end 4.78 (Y6_1 avg 5.47). |
+| V1_2 | `tfm512x6_lb_p20000_f80_sm80_noday_v2_63k_s11` | final, avg, bestval | - | 2026-11-21 | Second run of V1 (seed 11, data seed 2). Best WER 6.05 / 6.15 at scale 0.3 (V1_1 6.77 / 6.54); greedy PER 6.79 / 6.67; never-seen-word phoneme error 32.7 / 32.8. Recipe mean (avg) 6.35 vs Y6 6.96: passes the rule set before training (<= 6.66). Through the same live pipeline (reported, not charted): 5.81 at 500 ms (D 0), 5.61 at 1.5 s (D 13); GPT-2 L rescoring 4.85. |
+| V2_1 | `tfm512x6_lb_p20000_f80_sm80_noday_v2_mask5f_63k_s10` | final, avg, bestval | - | 2026-11-21 | V1's recipe with Y13's time masks (20 of at most 5 frames), for a 200 ms Transformer decider. Best WER 7.08 / 6.86 at scale 0.25 / 0.2 (Y13_1 8.03 / 8.01); greedy PER 7.40 / 7.29; never-seen-word phoneme error (avg) 33.5. Before the LLM step 95% of words within 200 ms at 9.98 (D1_1 11.57). 200 ms full system (2026-11-22, D 0, gated 3B selector): 6.66 (mean of four splits 6.66; D1_1 8.06), but only 91.0% of words within 200 ms (p95 233 ms; 92.6% without the selector): the LLM step's compute pushes it over, so the rule is not met and D1_1 stays. |
 
 ### W: Transformer, width 384, 5 layers, LightBeam style, a causal convolution in every block
 
@@ -387,11 +400,4 @@ Prepared in `results/harness/queue/` and not trained. Each takes the next free n
 training starts. New tags: `v2` (the 2026-11-11 corrections to the LightBeam reproduction), `crctc` (CR-CTC
 consistency loss, weight 0.2), `splice` (phrase splicing), `diph` (diphone targets).
 
-Queued 2026-11-21 (`results/harness/queue/tfm_arch_20261120.py`, arms d512mask5f, d640, d512x8; run 1 each, after V1_1's
-full-pipeline run; rules in the script):
-
-| Recipe | Full name | Change |
-|---|---|---|
-| V2 | `tfm512x6_lb_p20000_f80_sm80_noday_v2_mask5f_63k_s10` | V1 with Y13's time masks (at most 5 frames each), for a 200 ms Transformer decider |
-| U1 | `tfm640x6_lb_p20000_f80_sm80_noday_v2_63k_s10` | Y6's recipe at width 640, 6 layers, 10 heads (30.9M parameters; V1 20.0M) |
-| T1 | `tfm512x8_lb_p20000_f80_sm80_noday_v2_63k_s10` | Y6's recipe at width 512, 8 layers, 8 heads (26.3M parameters) |
+None at present.

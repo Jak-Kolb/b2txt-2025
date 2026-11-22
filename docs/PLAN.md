@@ -1,13 +1,14 @@
-# Streaming neural decoding plan — updated 2026-11-19
+# Streaming neural decoding plan — updated 2026-11-22
 
-**Where things stand (2026-11-20 evening):** live-word WER is 8.06 / 6.39 / **5.99%** at 200 ms / 500 ms / 1.5 s on val-dev
-with one decoder (mean delay 78 / 203 / 1,227 ms; 1.5 s now commits 13 steps after the word end, not 10, the longest
-wait inside the 95% rule: the first result under 6%, on the standard split; mean of four splits 6.07), all three with the fine-tuned Qwen2.5-3B phoneme-aware selector (step
-1; at 200 ms on close decisions only; 8.64 / 7.06 / 6.51 without it), against a target of below 6% (`current_knowledge.md` section 0, which also holds every result and
-the ledger of what was tried). A second decoder's votes (without the selector) gave 6.77 / 6.48. The 500 ms and 1.5 s results come from the Y6_1
-average deciding the words, with word-familiarity features in the ranker. After the sentence, a learned rescorer with
-the CTC ensemble and familiarity reaches 4.28% (GPT-2 Large alone 5.47%; best sentence in the list 2.24%). Y13 reaches
-7.67% at 200 ms but has 94.9% of its words within 200 ms, just short of the 95% rule.
+**Where things stand (2026-11-22):** live-word WER is 8.06 / **5.97** / **5.80%** at 200 ms / 500 ms / 1.5 s on val-dev
+(mean delay 78 / 276 / 1,226 ms; mean of four session splits 8.01 / 5.91 / 5.78): under the 6% target at 500 ms and 1.5 s,
+not yet at 200 ms (`current_knowledge.md` section 0, which also holds every result and the ledger of what was tried).
+The 500 ms and 1.5 s decider is V1_1 avg, Y6's recipe at width 512 and 6 layers (20.0M parameters); its second run V1_2
+avg gives 5.81 / 5.61 through the same pipeline (V1 recipe 5.89 / 5.70). The full system adds the CTC ensemble, GPT-2
+Large ft + OPT-2.7B, word familiarity and the fine-tuned Qwen2.5-3B phoneme-aware selector (one per limit, its time
+charged). At 200 ms the causal GRU D1_1 decides; V2_1 (V1 + Y13's short masks) reaches 6.66 there, but only 91.0% of its
+words are final within 200 ms, because list extraction and the two LLMs take too long. After the sentence, a learned
+rescorer over Y6's 100-best reaches 4.28% (GPT-2 Large alone: V1_1 avg 4.78, Y6_1 avg 5.47).
 
 **Reporting (2026-11-19, `current_knowledge.md` 1.4):** a budget is met when 95% of words are final within it; correct
 but late words then count as correct; every live number carries its mean delay; per budget, one model and the full
@@ -241,6 +242,17 @@ marks each word about one 80 ms frame later than Y6 (delays about 78 ms longer a
 D 13 timing. The selectors were trained on Y6 decisions and used unchanged. Queued before V2
 (`v1_extras_20261121.py`): V1's one-model cells with the separate 3B (chart 03, README) and GPT-2 rescoring of V1_1 /
 V1_2 avg; charts and README regenerated after it.
+**Overnight results (read 2026-11-22 14:42 EST):** V1_2 avg live 5.81 at 500 ms (mean 5.81, 98.2% within, mean delay 208
+ms) and 5.61 at 1.5 s D 13 (mean 5.56; D 13 is V1_2's longest wait inside the 95% rule). V1_1 avg one model with the
+separate 3B: 6.94 / 6.51 (Y6 7.42 / 7.15). GPT-2 rescoring: V1_1 avg 4.78, V1_2 avg 4.85. V2 6.86 (avg; passes its
+gate), U1 (640 x 6) 6.74, T1 (512 x 8) 6.46: neither size step earns a second run (rule <= 6.20). **V2 at 200 ms (15:15
+EST, `v2_200_20261122.py`):** full system 6.66 (mean 6.66) vs D1_1 8.06, but 91.0% of words within 200 ms (p95 233 ms;
+92.6% without the selector): the rule (95%) is not met; D1_1 stays. Charts, README, figures README and the 595 deck
+updated to V1 (2026-11-22).
+**Next at 200 ms (proposed, not queued):** V2's lists miss the rule on compute, not accuracy. (a) GPT-2 L ft in fp16 on
+V2's lists (fp32 now; OPT in fp16 left WER unchanged) and re-time; (b) a tighter selector gate or none; (c) a second run
+of V2 (V1's two runs differed by 0.39 in WER and V1_2 marked words earlier, 208 vs 276 ms mean delay at 500 ms). (a)
+and (b) need no training (about 15 min of GPU).
  LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
 run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms
