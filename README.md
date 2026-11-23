@@ -9,15 +9,15 @@ unchanged.
 shown within 200 ms, 500 ms or 1.5 s of the moment the participant finished attempting it. Whole-sentence
 (bidirectional) acoustic models are excluded, and rescoring after the sentence ends does not count.
 
-## Status (2026-11-22)
+## Status (2026-11-23)
 
 | Time limit after the word ends | One model | Full system | Mean delay | Deciding model |
 |---|---|---|---|---|
 | 200 ms | 8.64% | 8.06% | 78 ms | GRU D1 (causal) |
-| 500 ms | 6.93% | **5.97%** | 276 ms | Transformer V1 |
-| 1.5 s | 6.51% | **5.80%** | 1,226 ms | Transformer V1 |
+| 500 ms | 6.57% | **5.80%** | 229 ms | Transformer T1 |
+| 1.5 s | 6.39% | **5.42%** | 1,246 ms | Transformer T1 |
 | After the sentence, D1's 100 best (not the target) | 5.76% | 5.46% | - | GRU D1 (causal) |
-| After the sentence, V1's 100 best (not the target) | 4.55% | 3.88% | - | Transformer V1 |
+| After the sentence, T1's 100 best (not the target) | 4.13% | 3.71% | - | Transformer T1 |
 
 A live result passes its time limit when 95% of words are final within it; a correct word that arrives late still
 counts as correct, and the mean delay shows the typical wait. The deciding acoustic model and its 4-gram decoder
@@ -37,24 +37,26 @@ one being chosen (40 ms per word). At 200 ms and 500 ms the same recipe with 60k
 ones added (39 ms per word) is used; at 1.5 s that version is worse. The full system runs only with the best model
 that meets each limit, and each limit loads one selector.
 
-V1, the same Transformer recipe as Y6 at width 512 and 6 layers (20.0M parameters instead of 9.7M), took the full
-system under 6% at both 500 ms and 1.5 s: 6.39% -> 5.97% at 500 ms and 5.99% -> 5.80% at 1.5 s, with the same
-ensemble, language models and selectors (trained on Y6's decisions and used unchanged). Over four session splits it
-averages 5.91% and 5.78%: under 6% on all four splits at 1.5 s and on three of four at 500 ms (6.05% on the fourth).
-V1 marks words about one 80 ms frame later than Y6, so at 1.5 s it commits 12 steps (0.96 s) after the word end, the
-longest wait that keeps 95% of words in time (97.7% are). A second training run of V1 gives 5.81% and 5.61% through
-the same pipeline (one model 6.68% and 6.27%; after the sentence 4.20% and 3.73%). Going wider (640) or deeper (8
-layers) than V1 did not help.
+V1, the same Transformer recipe as Y6 at width 512 and 6 layers (20.0M parameters instead of 9.7M), first took the
+full system under 6% at both limits: 6.39% -> 5.97% at 500 ms and 5.99% -> 5.80% at 1.5 s. T1, the same recipe at 8
+layers (26.3M parameters), lowers it further with the same ensemble, language models and selectors (trained on Y6's
+decisions and used unchanged): 5.80% at 500 ms and 5.42% at 1.5 s, and 5.79% and 5.43% averaged over four session
+splits, under 6% on every split. It commits at its word end for 500 ms and 13 steps (1.04 s) after it for 1.5 s, the
+longest wait that keeps 95% of words in time (96.7% are). T1 is a single training run, and on its own (no language
+model step) it is only slightly better than V1 (sentence-end WER 6.46% vs 6.54%). V1's two runs differ by 0.16 and 0.19
+through the full system (the second gives 5.81% and 5.61%; one model 6.68% and 6.27%; after the sentence 4.20% and
+3.73%), so part of T1's lead may be run-to-run variation. Going wider instead (640 x 6) did not help the acoustic model
+and was not run live.
 
 After the sentence, a learned rescorer re-ranks the deciding model's 100 best sentences with the same kinds of
 inputs: GPT-2 Large, the model's own scores and word familiarity for "one model", plus the CTC scores of that model's
-full-system ensemble for "full system" (V1's 1.5 s ensemble; D1's 11 causal GRUs). GPT-2 Large alone with fixed weights
-gives 4.78% on V1's list and 6.48% on D1's. Always picking the closest sentence in V1's list would give 1.84%, so better
+full-system ensemble for "full system" (T1's 1.5 s ensemble; D1's 11 causal GRUs). GPT-2 Large alone with fixed weights
+gives 4.76% on T1's list and 6.48% on D1's. Always picking the closest sentence in T1's list would give 1.50%, so better
 choosing has room left.
 
 D1 is a causal 1,344-unit GRU. Y6 is a 9.7M-parameter Transformer trained with the LightBeam recipe (Feghhi et al.
-2026) with 80 ms of look-ahead, and V1 is the same recipe at 20.0M parameters. Each result comes from one training run
-of the recipe named; every run is listed in [`harness/registry/MODELS.md`](harness/registry/MODELS.md).
+2026) with 80 ms of look-ahead; V1 and T1 are the same recipe at 20.0M and 26.3M parameters. Each result comes from
+one training run of the recipe named; every run is listed in [`harness/registry/MODELS.md`](harness/registry/MODELS.md).
 
 No Transformer passes 200 ms yet. Y6 marks word ends late (95th percentile 360 ms after the word). Y13, the Y6 recipe
 trained with shorter time masks, marks them early: its full system reaches 7.67% at 200 ms, but only 94.9% of its
@@ -68,9 +70,9 @@ sessions, one participant). Read them as exploratory:
 - Models, ensembles and settings were chosen on this same partition, so the numbers are optimistic. There is no
   independent holdout, and the competition's test labels are not public.
 - Live results are offline replays of the models' outputs under the timing rules, not a running streaming system. Y6
-  streams in the harness's live player (its streamed outputs match the offline ones; V1 has not been run there), but
-  the timing here comes from the replays. The ranker is trained on half of the sessions and scored on the other half,
-  both ways.
+  streams in the harness's live player (its streamed outputs match the offline ones; V1 and T1 have not been run
+  there), but the timing here comes from the replays. The ranker is trained on half of the sessions and scored on the
+  other half, both ways.
 - Word-end times come from a forced alignment, not from measured speech.
 - Most comparisons are single training runs.
 
@@ -80,14 +82,14 @@ A second track on the Makin lab's ECoG dataset is intended; access and integrati
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/dark/01_live_wer_waterfall_500ms.png">
-  <img src="docs/images/light/01_live_wer_waterfall_500ms.png" alt="Waterfall chart of live word error rate at 500 ms: GRU G2's own words 11.16%; Transformer Y6 instead of the GRU -1.42; two language models choosing the word -1.61; word familiarity -0.27 (one model: 7.87%); CTC scores of an acoustic-model ensemble -0.81; an LLM that reads the heard phonemes -0.67 (6.39%); V1, a larger Transformer, deciding instead of Y6 -0.42; result 5.97%.">
+  <img src="docs/images/light/01_live_wer_waterfall_500ms.png" alt="Waterfall chart of live word error rate at 500 ms: GRU G2's own words 11.16%; Transformer Y6 instead of the GRU -1.42; two language models choosing the word -1.61; word familiarity -0.27 (one model: 7.87%); CTC scores of an acoustic-model ensemble -0.81; an LLM that reads the heard phonemes -0.67 (6.39%); T1, a larger Transformer, deciding instead of Y6 -0.59; result 5.80%.">
 </picture>
 
 ### GRU or Transformer, one acoustic model each
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/dark/03_gru_vs_transformer.png">
-  <img src="docs/images/light/03_gru_vs_transformer.png" alt="Bar chart of one GRU against one Transformer (V1), each with the same language models, word familiarity and phoneme-aware selector: 500 ms 8.20% vs 6.93%, 1.5 s 7.87% vs 6.51%, sentence end 6.10% vs 4.78%, no time limit 5.76% vs 4.78%; at 200 ms only the GRU, 8.64% (selector on close decisions only).">
+  <img src="docs/images/light/03_gru_vs_transformer.png" alt="Bar chart of one GRU against one Transformer (T1), each with the same language models, word familiarity and phoneme-aware selector: 500 ms 8.20% vs 6.57%, 1.5 s 7.87% vs 6.39%, sentence end 6.10% vs 4.76%, no time limit 5.76% vs 4.76%; at 200 ms only the GRU, 8.64% (selector on close decisions only).">
 </picture>
 
 ## What this repository adds
