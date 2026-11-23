@@ -253,6 +253,11 @@ updated to V1 (2026-11-22).
 **Four reporting cells (18:31 EST, `four_cells_20261122.py`):** every headline decider now has one model and full system,
 live and at sentence end. Learned sentence-end rescorer, one model / full system: D1_1 5.76 / 5.46, V1_1 avg 4.55 /
 **3.88**, V1_2 avg 4.20 / 3.73; V1_2 avg live one model 6.68 / 6.27 (`current_knowledge.md` 6.11).
+**Queued (2026-11-23, 10:25 PM EST Sunday; user):** T1_1 avg (512 x 8) through V1's full live pipeline at its best decode
+scale, 0.25 (`t1_live_20261123.py`, about 70 min), then its one-model and sentence-end cells. Expected: about V1_1 avg's
+result (acoustic WER 6.46 vs 6.54, inside V1's run-to-run spread of 0.39). Rule set before the run: T1_1 avg replaces
+V1_1 avg at a limit if its full-system mean over four splits is below V1_1 avg's (5.91 at 500 ms, 5.78 at 1.5 s) with
+95% of words within the limit.
 **Next at 200 ms (proposed, not queued):** V2's lists miss the rule on compute, not accuracy. (a) GPT-2 L ft in fp16 on
 V2's lists (fp32 now; OPT in fp16 left WER unchanged) and re-time; (b) a tighter selector gate or none; (c) a second run
 of V2 (V1's two runs differed by 0.39 in WER and V1_2 marked words earlier, 208 vs 276 ms mean delay at 500 ms). (a)
