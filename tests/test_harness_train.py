@@ -151,6 +151,31 @@ class TrainTests(unittest.TestCase):
         self.assertEqual(state["state"], "registered")
         self.assertGreaterEqual(datetime.fromisoformat(state["updated"]), datetime.fromisoformat(start))
 
+    def test_supervisor_waits_for_the_gpu_job_lock(self):
+        import fcntl
+        import threading
+        train_dir = self.fork()
+        lock = self.results / "locks" / "job.lock"
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        handle = lock.open("a")
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        codes = []
+        thread = threading.Thread(target=lambda: codes.append(train.supervise(
+            train_dir, root=self.results, trainer=self.fake(), registry_root=self.registry)))
+        thread.start()
+        for _ in range(100):
+            if json.loads((train_dir / "state.json").read_text())["state"] == "gpu_waiting":
+                break
+            __import__("time").sleep(0.05)
+        self.assertEqual(json.loads((train_dir / "state.json").read_text())["state"], "gpu_waiting")
+        self.assertFalse((train_dir / "train.log").exists())
+        self.assertEqual(train.status(self.results)[0]["state"], "gpu_waiting")
+        fcntl.flock(handle, fcntl.LOCK_UN)
+        handle.close()
+        thread.join(60)
+        self.assertEqual(codes, [0])
+        self.assertEqual(json.loads((train_dir / "state.json").read_text())["state"], "registered")
+
     def test_smoke_checks(self):
         train_dir = self.fork()
         passed, result = train.run_smoke(train_dir, data_dir=self.data, trainer=self.fake(), device="cpu")

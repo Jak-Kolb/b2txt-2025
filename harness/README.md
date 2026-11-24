@@ -58,6 +58,27 @@ pipeline on the same trials. Use it after changes that affect runtime; paced run
 start while a harness-launched training run is active. Full val-dev (`--scope val-dev-full`)
 is about 6.3 hours; reserve it for pipelines frozen for a claim, on an otherwise idle machine.
 
+## Jobs page (`serve`, Jobs tab)
+
+`#/jobs` shows what is running (stage, elapsed time, PID, GPU memory when WSL exposes it), what is waiting and on
+what (a PID, the GPU lock or a start time), and the last 50 finished jobs, each with a log tail; it refreshes every
+10 s. Jobs come from three places: queue scripts that log through `harness.jobs` (`queue_logger` or `report`;
+each folder `results/harness/queue/<stamp>_<name>/` gets a `job.json`, and every state change is appended to
+`results/harness/queue/jobs.jsonl`), training queues (their own `status.json`, one stage per model), older queue
+folders (their `queue.log` stage lines), and `harness train` runs. Queue folders without a reporter count as live
+while a process runs a matching queue script. Read-only JSON for agents and tools:
+
+    GET /api/jobs?limit=50              live jobs first, then the most recent finished ones
+    GET /api/jobs/<id>                  one job
+    GET /api/jobs/<id>/log?tail=100&log=queue|commands|stdout|train|supervise|smoke
+    GET /api/gpu                        nvidia-smi use, compute processes mapped to jobs, job/paced lock holders
+
+Log tails only read files under `results/harness/` chosen from the job record (never a caller path), and hide lines
+that look like sentence text. Training (and the smoke) hold `results/harness/locks/job.lock`, the lock benchmarks
+take, so a second GPU job waits (`gpu_waiting`) or, for a benchmark, refuses to start; `--then-bench` runs after the
+lock is released. Other GPU steps can share it with `harness.jobs.gpu_lock()` or
+`flock results/harness/locks/job.lock CMD`.
+
 ## Live player (`serve`, Live tab)
 
 Pick a preset (or compose acoustic model + LM + decode settings, optionally overriding the

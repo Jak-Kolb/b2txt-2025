@@ -43,7 +43,8 @@ def cmd_bench(options):
             bench.run_paced(spec, scope_name=options.scope or "val-dev-sample",
                             allow_exposed=options.allow_exposed, **common)
     except BlockingIOError:
-        raise SystemExit("Another harness benchmark holds the job lock; wait for it to finish")
+        raise SystemExit("Another GPU job (a harness benchmark or training run) holds the job lock; "
+                         "wait for it to finish (see the viewer's Jobs page)")
 
 
 def fmt(value, digits=2):
@@ -144,7 +145,8 @@ def cmd_sweep(options):
     try:
         runs = bench.run_sweep(spec, grid, **common)
     except BlockingIOError:
-        raise SystemExit("Another harness benchmark holds the job lock; wait for it to finish")
+        raise SystemExit("Another GPU job (a harness benchmark or training run) holds the job lock; "
+                         "wait for it to finish (see the viewer's Jobs page)")
     rows = []
     for run_dir in runs:
         manifest, summary, _ = bench.load_run(run_dir)

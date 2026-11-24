@@ -208,9 +208,39 @@ def create_app(root=DEFAULT_ROOT, registry_root=registry.REGISTRY_DIR, live=None
         except ValueError as exc:
             raise web.HTTPConflict(text=str(exc))
 
-    async def training(_):
-        from .train import status
-        return web.json_response(status(root))
+    async def jobs_view(request):
+        from . import jobs
+        try:
+            limit = int(request.query.get("limit", 50))
+        except ValueError:
+            raise web.HTTPBadRequest(text="limit must be an integer")
+        return web.json_response(await asyncio.to_thread(jobs.list_jobs, root, limit))
+
+    async def job_view(request):
+        from . import jobs
+        try:
+            job = await asyncio.to_thread(jobs.get_job, request.match_info["job_id"], root)
+        except KeyError as exc:
+            raise web.HTTPNotFound(text=str(exc))
+        return web.json_response({k: v for k, v in job.items() if not k.startswith("_")})
+
+    async def job_log(request):
+        from . import jobs
+        try:
+            tail = int(request.query.get("tail", 100))
+        except ValueError:
+            raise web.HTTPBadRequest(text="tail must be an integer")
+        try:
+            return web.json_response(await asyncio.to_thread(
+                jobs.job_log_tail, request.match_info["job_id"], tail, request.query.get("log"), root))
+        except (KeyError, FileNotFoundError) as exc:
+            raise web.HTTPNotFound(text=str(exc).strip("'\""))
+        except PermissionError as exc:
+            raise web.HTTPForbidden(text=str(exc))
+
+    async def gpu_view(_):
+        from . import jobs
+        return web.json_response(await asyncio.to_thread(jobs.gpu_status, root))
 
     async def registry_view(_):
         entries = registry.load_all(registry_root)
@@ -230,7 +260,10 @@ def create_app(root=DEFAULT_ROOT, registry_root=registry.REGISTRY_DIR, live=None
     app.router.add_get("/api/runs/{run_id}/trials/{index}/phonemes", phonemes)
     app.router.add_get("/api/compare", compare)
     app.router.add_get("/api/registry", registry_view)
-    app.router.add_get("/api/train", training)
+    app.router.add_get("/api/jobs", jobs_view)
+    app.router.add_get("/api/jobs/{job_id}", job_view)
+    app.router.add_get("/api/jobs/{job_id}/log", job_log)
+    app.router.add_get("/api/gpu", gpu_view)
     if live is not None:
         live.install(app)
     app.router.add_static("/static", WEB)

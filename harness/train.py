@@ -160,7 +160,13 @@ def streaming_check(checkpoint_dir, data_dir, n_trials=2, device="cuda"):
 
 
 def run_smoke(train_dir, data_dir=DATA_DIR, trainer=trainer_command, device="cuda", timeout_s=3600):
+    from .jobs import gpu_lock
     train_dir = Path(train_dir)
+    with gpu_lock(train_dir.parent.parent, log=lambda m: print(m, flush=True)):   # one GPU job at a time
+        return _run_smoke(train_dir, data_dir, trainer, device, timeout_s)
+
+
+def _run_smoke(train_dir, data_dir, trainer, device, timeout_s):
     set_state(train_dir, state="smoke_running")
     env = dict(os.environ, PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True")
     with (train_dir / "smoke.log").open("x") as log:
@@ -251,11 +257,16 @@ def supervise(train_dir, root=DEFAULT_ROOT, trainer=trainer_command, registry_ro
         set_state(train_dir, state="scheduled", supervisor_pid=os.getpid())
         wait_until(not_before)
     env = dict(os.environ, PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True")
-    with (train_dir / "train.log").open("x") as log:
-        process = subprocess.Popen(trainer((train_dir / "config.yaml").resolve()), cwd=MODEL_TRAINING,
-                                   stdout=log, stderr=subprocess.STDOUT, env=env)
-        set_state(train_dir, state="training", trainer_pid=process.pid, supervisor_pid=os.getpid())
-        code = process.wait()
+    from .jobs import gpu_lock
+    # Training holds the job lock benchmarks take, so two GPU jobs never overlap; it is released before the
+    # optional --then-bench below, which takes the lock itself.
+    with gpu_lock(root, on_wait=lambda holders: set_state(train_dir, state="gpu_waiting", supervisor_pid=os.getpid(),
+                                                          gpu_lock_holders=holders)):
+        with (train_dir / "train.log").open("x") as log:
+            process = subprocess.Popen(trainer((train_dir / "config.yaml").resolve()), cwd=MODEL_TRAINING,
+                                       stdout=log, stderr=subprocess.STDOUT, env=env)
+            set_state(train_dir, state="training", trainer_pid=process.pid, supervisor_pid=os.getpid())
+            code = process.wait()
     log_info = parse_log(Path(request["model_dir"]) / "training_log")
     if code != 0 or not log_info["best_line"]:
         set_state(train_dir, state="failed", exit_code=code, log=log_info)
@@ -269,6 +280,7 @@ def supervise(train_dir, root=DEFAULT_ROOT, trainer=trainer_command, registry_ro
         set_state(train_dir, state="benchmark_waiting")
         with flocked(lock_path(root, "job")):   # wait for any running benchmark
             pass
+        set_state(train_dir, state="benchmarking")
         run_dir = bench.run_standard(spec, root=root, **(bench_kwargs or {}))
         set_state(train_dir, state="benchmarked", benchmark_run=run_dir.name)
     return 0
@@ -280,7 +292,8 @@ def status(root=DEFAULT_ROOT):
         state = json.loads(path.read_text())
         request = json.loads((path.parent / "request.json").read_text())
         live_pid = (state.get("trainer_pid") if state.get("state") == "training" else
-                    state.get("supervisor_pid") if state.get("state") in ("launched", "scheduled") else None)
+                    state.get("supervisor_pid") if state.get("state") in (
+                        "launched", "scheduled", "gpu_waiting", "benchmark_waiting", "benchmarking") else None)
         if live_pid and not pid_alive(live_pid):
             state["state"] = "interrupted"
         log = parse_log(Path(request["model_dir"]) / "training_log") if state.get("state") in (
@@ -289,7 +302,9 @@ def status(root=DEFAULT_ROOT):
                          overrides=request["overrides"], question=request["question"], state=state.get("state"),
                          updated=state.get("updated"), smoke=state.get("smoke"), log=log,
                          benchmark_run=state.get("benchmark_run"), registry_entry=state.get("registry_entry"),
-                         not_before=state.get("not_before")))
+                         not_before=state.get("not_before"), created=request.get("created"),
+                         then_bench=state.get("then_bench"), trainer_pid=state.get("trainer_pid"),
+                         supervisor_pid=state.get("supervisor_pid")))
     return rows
 
 
