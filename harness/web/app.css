@@ -156,3 +156,49 @@ canvas.trace { width: 100%; height: 60px; display: block; border-bottom: 1px sol
 .ph .p.sub { background: var(--wash-sub); }
 .ph .p.ins { background: var(--wash-ins); }
 .ph .p.del { color: var(--muted); text-decoration: line-through; }
+
+/* Jobs page */
+.jtitle { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+button.small { font-size: 12px; padding: 2px 8px; }
+.jobcard { border-left: 3px solid var(--warning); }
+.jobcard.flash, tr.flash td { background: var(--wash-ins); }
+.jhead { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+.jname { font-size: 15px; }
+.jfacts { display: flex; gap: 18px; flex-wrap: wrap; }
+.fact .label { color: var(--ink-2); font-size: 11px; }
+.fact .v { font-weight: 600; font-variant-numeric: tabular-nums; }
+.jstate { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; border: 1px solid var(--axis);
+          white-space: nowrap; }
+.jstate::before { content: "\25CF  "; }
+.jstate-running::before { color: var(--warning); }
+.jstate-waiting::before, .jstate-queued::before { color: var(--accent); }
+.jstate-done::before { color: var(--good); }
+.jstate-done.partial::before { color: var(--warning); }
+.jstate-failed::before, .jstate-interrupted::before { content: "\2715  "; color: var(--critical); }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 2px; }
+.chip { font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--grid); background: var(--page);
+        font-family: var(--mono); }
+.chip-done { border-color: var(--good); }
+.chip-done::before { content: "\2713 "; color: var(--good); }
+.chip-running { border-color: var(--warning); font-weight: 600; }
+.chip-running::before { content: "\25CF "; color: var(--warning); }
+.chip-failed { border-color: var(--critical); }
+.chip-failed::before { content: "\2715 "; color: var(--critical); }
+.chip-unfinished { color: var(--muted); }
+.jlinks { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 2px; font-size: 12px; }
+.logwrap { margin-top: 6px; }
+.logbox { margin-top: 6px; }
+pre.logtail { font: 11.5px/1.45 var(--mono); background: var(--page); border: 1px solid var(--grid); border-radius: 6px;
+              padding: 8px 10px; max-height: 360px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+              margin: 6px 0 0; }
+table.jobs td.nowrap, table.jobs .nowrap { white-space: nowrap; }
+table.jobs td.jobcell { min-width: 220px; max-width: 360px; }
+table.jobs .id { word-break: break-all; }
+table.jobs td.stagescell { max-width: 420px; }
+table.jobs td.stagescell .chips { margin: 0; }
+table.jobs td.linkscell { max-width: 260px; }
+table.jobs td.linkscell .jlinks { margin: 0; flex-direction: column; gap: 2px; }
+.jbtn { margin-top: 4px; }
+tr.logrow > td { background: var(--page); padding: 4px 8px 10px; }
+.small-note { font-size: 11px; }
+.jlinks a { white-space: nowrap; }

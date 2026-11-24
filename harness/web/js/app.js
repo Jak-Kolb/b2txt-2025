@@ -1,4 +1,4 @@
-// Hash router: #/runs, #/run/<id>, #/compare[/<a>/<b>], #/trial/<run>/<i>[/<otherRun>], #/live, #/train
+// Hash router: #/runs, #/run/<id>, #/compare[/<a>/<b>], #/trial/<run>/<i>[/<otherRun>], #/live, #/train, #/jobs
 import { el } from "./ui.js";
 import { runsView } from "./views/runs.js";
 import { runView } from "./views/run.js";
@@ -6,8 +6,9 @@ import { compareView } from "./views/compare.js";
 import { trialView } from "./views/trial.js";
 import { liveView } from "./views/live.js";
 import { trainView } from "./views/train.js";
+import { jobsView } from "./views/jobs.js";
 
-const routes = { runs: runsView, run: runView, compare: compareView, trial: trialView, live: liveView, train: trainView };
+const routes = { runs: runsView, run: runView, compare: compareView, trial: trialView, live: liveView, train: trainView, jobs: jobsView };
 let cleanup = null;
 
 async function route() {
