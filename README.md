@@ -82,8 +82,13 @@ A second track on the Makin lab's ECoG dataset is intended; access and integrati
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/dark/01_live_wer_waterfall_500ms.png">
-  <img src="docs/images/light/01_live_wer_waterfall_500ms.png" alt="Waterfall chart of live word error rate at 500 ms: GRU G2's own words 11.16%; Transformer Y6 instead of the GRU -1.42; two language models choosing the word -1.61; word familiarity -0.27 (one model: 7.87%); CTC scores of an acoustic-model ensemble -0.81; an LLM that reads the heard phonemes -0.67 (6.39%); T1, a larger Transformer, deciding instead of Y6 -0.59; result 5.80%.">
+  <img src="docs/images/light/01_live_wer_waterfall_500ms.png" alt="Waterfall chart of live word error rate at 500 ms: GRU G2's own words 11.16%; Transformer Y6 instead of the GRU -1.42; two language models choosing the word -1.61; word familiarity -0.27 (one model: 7.87%); CTC scores of an acoustic-model ensemble -0.81; an LLM that reads the heard phonemes -0.67 (6.39%); T1, a larger Transformer, deciding instead of Y6 -0.59; GPT-2 Large in 16-bit so every model fits on one PC at once -0.01; result 5.79% with every model loaded at once.">
 </picture>
+
+The last step runs the same full system with every model loaded on one PC at once (measured: T1, both language models
+and the selector on the GPU, 14.4 of 15.9 GB with GPT-2 Large in 16-bit; the 11-GRU ensemble on the CPU, 38 ms per 80
+ms frame). This is a replay; the pipeline has not yet run live as one program. At 1.5 s the 26-model ensemble cannot
+keep up on the CPU; with the 11 causal GRUs instead it gives 5.53% (5.51% over four session splits).
 
 ### GRU or Transformer, one acoustic model each
 
