@@ -228,14 +228,6 @@ def _report(folder, msg):
         _event(folder, status, event[0], **event[1])
 
 
-def add_runs(folder, *run_ids):
-    """Declare harness run ids a queue script produced (shown as links on the Jobs page)."""
-    with contextlib.suppress(Exception):
-        status = _load_or_new(Path(folder))
-        status["runs"].extend(r for r in run_ids if r not in status["runs"])
-        _save(Path(folder), status)
-
-
 def queue_logger(folder):
     """A ready-made log(msg) for new queue scripts: timestamped line to stdout and FOLDER/queue.log, plus status."""
     folder = Path(folder)
@@ -689,6 +681,9 @@ def _train_jobs(root):
         train_dir = Path(root) / "train" / row["id"]
         logs = {name: train_dir / f"{name}.log" for name in ("train", "supervise", "smoke")
                 if (train_dir / f"{name}.log").exists()}
+        ended = updated if state not in LIVE else None
+        if state == "interrupted" and logs:   # state.json stops at the launch; the last log write is when it died
+            ended = iso(datetime.fromtimestamp(max(p.stat().st_mtime for p in logs.values()), timezone.utc))
         log = row.get("log") or {}
         waiting = None
         if raw == "scheduled":
@@ -697,7 +692,7 @@ def _train_jobs(root):
             waiting = dict(label="GPU job lock (results/harness/locks/job.lock)", lock="job")
         pid = row.get("trainer_pid") if raw == "training" else row.get("supervisor_pid")
         jobs.append(dict(id=f"train-{row['id']}", kind="train", name=row["name"], state=state, stage=raw,
-                         stages=[], started=row.get("created"), ended=updated if state not in LIVE else None,
+                         stages=[], started=row.get("created"), ended=ended,
                          updated=updated, pid=pid if state in LIVE else None, after_pid=None, waiting_on=waiting,
                          script=None, source="train", exit=None, failed_stages=0,
                          detail=dict(forked_from=row.get("forked_from"), overrides=row.get("overrides"),

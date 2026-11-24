@@ -191,6 +191,23 @@ class JobsTests(unittest.TestCase):
         self.assertEqual(job["elapsed_s"], 5 * 3600)
         self.assertEqual(jobs.job_log_tail(job["id"], root=self.root)["log"], "train")
 
+    def test_interrupted_train_job_ends_at_its_last_log_write(self):
+        # state.json stops changing once training starts, so a killed run's end is its last log write
+        train = self.root / "train" / "20990101T000000Z_killed"
+        train.mkdir(parents=True)
+        (train / "request.json").write_text(json.dumps(dict(name="killed", forked_from="tiny", overrides=[],
+                                                            question="Q?", model_dir=str(train / "m"),
+                                                            created="2099-01-01T00:00:00+00:00")))
+        (train / "state.json").write_text(json.dumps(dict(state="training", trainer_pid=2 ** 22 + 7,
+                                                          updated="2099-01-01T00:01:00+00:00")))
+        (train / "train.log").write_text("t: Train batch 26400: loss: 0.5\n")
+        last_write = time.mktime(time.strptime("2099-01-01T03:00:00", "%Y-%m-%dT%H:%M:%S")) - time.timezone
+        os.utime(train / "train.log", (last_write, last_write))
+        job = jobs.get_job("train-20990101T000000Z_killed", self.root)
+        self.assertEqual(job["state"], "interrupted")
+        self.assertEqual(job["ended"], "2099-01-01T03:00:00+00:00")
+        self.assertEqual(job["elapsed_s"], 3 * 3600)
+
     def test_log_tail_hides_sentence_lines_and_stays_inside_root(self):
         folder = self.queue / "20990101T000000Z_priv"
         folder.mkdir()

@@ -208,10 +208,6 @@ def create_app(root=DEFAULT_ROOT, registry_root=registry.REGISTRY_DIR, live=None
         except ValueError as exc:
             raise web.HTTPConflict(text=str(exc))
 
-    async def training(_):
-        from .train import status
-        return web.json_response(status(root))
-
     async def jobs_view(request):
         from . import jobs
         try:
@@ -264,7 +260,6 @@ def create_app(root=DEFAULT_ROOT, registry_root=registry.REGISTRY_DIR, live=None
     app.router.add_get("/api/runs/{run_id}/trials/{index}/phonemes", phonemes)
     app.router.add_get("/api/compare", compare)
     app.router.add_get("/api/registry", registry_view)
-    app.router.add_get("/api/train", training)
     app.router.add_get("/api/jobs", jobs_view)
     app.router.add_get("/api/jobs/{job_id}", job_view)
     app.router.add_get("/api/jobs/{job_id}/log", job_log)

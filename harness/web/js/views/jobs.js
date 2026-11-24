@@ -49,8 +49,10 @@ function links(job, jobsById) {
     const [a, b] = runs.slice(-2);
     out.push(el("a", { href: `#/compare/${encodeURIComponent(a)}/${encodeURIComponent(b)}`, text: "compare last two" }));
   }
-  const trains = (job.links && job.links.train) || [];
-  if (trains.length) out.push(el("a", { href: "#/train", title: trains.join("\n"), text: trains.length > 1 ? `training page (${trains.length} runs)` : "training page" }));
+  // a queue's training runs: jump to their own row on this page when it is listed
+  ((job.links && job.links.train) || []).map((t) => `train-${t}`).filter((id) => id !== job.id).forEach((id) => out.push(
+    jobsById[id] ? el("a", { href: "#/jobs", title: id, text: `training ${jobsById[id].name}`, onclick: (e) => { e.preventDefault(); openJob(id); } })
+      : el("span", { class: "muted", title: id, text: "training run (older than this list)" })));
   ((job.links && job.links.jobs) || []).slice(-3).forEach((j) => out.push(el("a", {
     href: "#/jobs", title: j, text: `uses ${j}`, onclick: (e) => { e.preventDefault(); openJob(j); } })));
   return out.length ? el("div", { class: "jlinks" }, out) : null;
@@ -209,6 +211,16 @@ function waitingTable(jobs, jobsById) {
     }))));
 }
 
+// A finished training run: its last state, last val PER and question (two lines; full text and overrides on hover).
+function trainSummary(j) {
+  const d = j.detail || {};
+  return el("div", {},
+    el("span", { class: "muted", text: j.stage }),
+    d.last_val_per != null ? ` · last val PER ${Number(d.last_val_per).toFixed(4)}` : null,
+    d.question ? el("div", { class: "sub clamp2", title: [d.question, (d.overrides || []).join(" ")].filter(Boolean).join("\n\n"),
+                             text: d.question }) : null);
+}
+
 function finishedTable(jobs, jobsById) {
   return el("div", { class: "card table-wrap" }, el("table", { class: "jobs" },
     el("thead", {}, el("tr", {}, ["Result", "Job", "Ended", "Took", "Stages", "Links"].map((h) => el("th", { text: h })))),
@@ -219,7 +231,7 @@ function finishedTable(jobs, jobsById) {
         jobCell(j, button),
         el("td", { class: "nowrap", text: localTime(j.ended || j.updated) }),
         el("td", { class: "num", text: duration(j.elapsed_s) }),
-        el("td", { class: "stagescell" }, stageChips(j) || el("span", { class: "muted", text: j.kind === "train" ? j.stage : "–" })),
+        el("td", { class: "stagescell" }, stageChips(j) || (j.kind === "train" ? trainSummary(j) : el("span", { class: "muted", text: "–" }))),
         el("td", { class: "linkscell" }, links(j, jobsById) || "–")), row];
     }))));
 }
@@ -261,7 +273,7 @@ export async function jobsView(main) {
     el("div", { class: "sub", text: "Queue scripts in results/harness/queue/ and harness training runs. Queue scripts report stages through "
       + "harness.jobs (job.json), training queues through their status.json; older scripts are read from their queue.log. One GPU job at a time: training and benchmarks share results/harness/locks/job.lock." }),
     body);
-  await render();
+  render();   // not awaited: the router must get the cleanup now, or leaving during the first load leaks the timer
   timer = setInterval(() => { if (!document.hidden) render(); }, REFRESH_MS);
   return () => { stopped = true; clearInterval(timer); };
 }
