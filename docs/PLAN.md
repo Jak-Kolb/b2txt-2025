@@ -1,12 +1,16 @@
-# Streaming neural decoding plan — updated 2026-11-19
+# Streaming neural decoding plan — updated 2026-11-23
 
-**Where things stand (2026-11-19 evening):** live-word WER is 8.12 / 6.40 / 6.07% at 200 ms / 500 ms / 1.5 s on val-dev
-with one decoder (mean delay 78 / 204 / 992 ms), all three with the fine-tuned Qwen2.5-3B phoneme-aware selector (step
-1; at 200 ms on close decisions only; 8.64 / 7.06 / 6.51 without it), against a target of below 6% (`current_knowledge.md` section 0, which also holds every result and
-the ledger of what was tried). A second decoder's votes (without the selector) gave 6.77 / 6.48. The 500 ms and 1.5 s results come from the Y6_1
-average deciding the words, with word-familiarity features in the ranker. After the sentence, a learned rescorer with
-the CTC ensemble and familiarity reaches 4.28% (GPT-2 Large alone 5.47%; best sentence in the list 2.24%). Y13 reaches
-7.67% at 200 ms but has 94.9% of its words within 200 ms, just short of the 95% rule.
+**Where things stand (2026-11-23):** live-word WER is 8.06 / **5.80** / **5.42%** at 200 ms / 500 ms / 1.5 s on val-dev
+(mean delay 78 / 229 / 1,246 ms; mean of four session splits 8.01 / 5.79 / 5.43): under the 6% target at 500 ms and 1.5 s,
+not yet at 200 ms (`current_knowledge.md` section 0, which also holds every result and the ledger of what was tried).
+The 500 ms and 1.5 s decider is T1_1 avg, Y6's recipe at width 512 and 8 layers (26.3M parameters; one run), which
+replaced V1_1 avg (512 x 6: 5.97 / 5.80; its second run V1_2 avg 5.81 / 5.61) by the rule set before its live run.
+The full system adds the CTC ensemble, GPT-2
+Large ft + OPT-2.7B, word familiarity and the fine-tuned Qwen2.5-3B phoneme-aware selector (one per limit, its time
+charged). At 200 ms the causal GRU D1_1 decides; V2_1 (V1 + Y13's short masks) reaches 6.66 there, but only 91.0% of its
+words are final within 200 ms, because list extraction and the two LLMs take too long. After the sentence, the learned
+rescorer over T1_1 avg's 100-best reaches 3.71% (one model 4.13; GPT-2 Large alone 4.76; V1_1 avg 3.88), and over
+D1_1's 5.46% (one model 5.76).
 
 **Reporting (2026-11-19, `current_knowledge.md` 1.4):** a budget is met when 95% of words are final within it; correct
 but late words then count as correct; every live number carries its mean delay; per budget, one model and the full
@@ -160,6 +164,109 @@ the combined 3B on the GRU deciders' decisions at 200 ms (needs their following-
 200 ms; (2) a 3B on everything that helped (both deadlines, following words, 60k synthetic decisions, all five folds),
 batch 2 x 8 with a slowdown watchdog; (3) the combined recipe on five folds, no synthetic; (4) the same with the
 decoder's confidence per candidate in the prompt (`--conf`, new).
+**Overnight results:** (1) a tie at 200 ms. (2) "Everything" 3B: pick accuracy 90.8 / 90.9% (combined 89.9 / 90.1%);
+new best at 200 ms, 8.12 -> 8.06 (mean 8.16 -> 8.01, all four splits lower; one model 8.64 -> 8.40) and 500 ms 6.40 ->
+6.39 (mean 6.45 -> 6.41; one model 7.43 -> 7.29); worse at 1.5 s (6.10, mean 6.16 vs 6.11), so 1.5 s keeps the combined
+3B. Possibly because half of its training decisions (the synthetic ones) have no following words. (3) and (4) did not
+finish: WSL shut down cleanly at 04:29 EST (Windows side) with (3) at step 3,100 of 3,644, which had also slowed to
+5 s per step from step 1,550 (GPU memory spill at batch 8 with five folds; the watchdog's rising median missed it).
+To rerun: (3) and (4) at batch 4 x 4, the watchdog against the first blocks' median.
+**Reruns (2026-11-20 morning):** (3) five folds, no synthetic: pick accuracy 90.3 / 90.5%, but the full system is not
+better (500 ms 6.46, mean 6.41, same as the everything 3B; 1.5 s 6.17, mean 6.21, higher than the combined 3B on all four
+splits). It is the best selector for one model alone (Y6: 500 ms 7.42 -> 7.24, 1.5 s 7.15 -> 7.03, every split); to use it
+in the one-model rows, score the GRU decisions with it too, so chart 03 keeps one selector. (4) `--conf` spilled GPU
+memory at batch 4 x 4 (2.65 s per step from the start); restarted at batch 2 x 8. Result: a tie at 1.5 s (6.08 vs
+6.07, mean 6.08 vs 6.11; split values 6.08 / 6.05 / 6.02 / 6.17), worse at 500 ms (mean 6.46). Against (3), its control,
+the confidence lowers 1.5 s on all four splits (mean 6.21 -> 6.08) with the same pick accuracy. Shown numbers unchanged:
+8.06 / 6.39 / 6.07. Next candidate: the combined recipe on folds 0-3 with `--conf` (about 1.5 h at batch 2 x 8). If the
+five-fold cost (+0.10) and the confidence gain (-0.13) add up, 1.5 s would be about 5.98. Result: a tie (6.08, mean
+6.12 vs 6.07 / 6.11). The four 1.5 s selector variants sit at means 6.08-6.21, a plateau about 0.1 above 6%, so the
+next gains have to come from elsewhere (below).
+**Toward 6% at 500 ms (queued 2026-11-20 afternoon, no training; `results/harness/queue/waits_avg_20261120.py`).** At
+500 ms the 529 errors are 304 misranked words and 190 never offered. (1) **Use the waits the budget allows:** 500 ms
+commits at D 0 (98.3% of words in time) and 1.5 s at D 10 (Y7_1's old timing). Without LLMs, D 1 and D 12 stay inside
+the 95% rule and were worth -0.10 / -0.18. New list set at D 1 / 12, scored through the whole system with the current
+selectors. (2) **Y6_1 avg and Y6_2 avg averaged frame by frame into one decider** (same recipe and timing; better lists
+would act on the never-offered words). Sentence-end gate first: it goes to the live pipeline if it is at least 0.3
+below the better single run (<= 6.65). If it passes, two more Y6 runs (about 110 min each) for a four-way average.
+Result: not passed. Best 6.84 (mean of the logits, scale 0.35; controls 6.97 / 6.95). The runs share most errors, so
+more seeds of the same recipe will not buy much.
+Training a new acoustic recipe is last: recipe changes have not moved live WER since October.
+**Result (17:13 EST):** (1) 1.5 s at D 12 with the combined 3B: **5.96** (5.96 / 6.09 / 6.07 / 6.11, mean 6.06; D 10 6.07 /
+6.10 / 6.02 / 6.26, mean 6.11), 98.9% of words within 1.5 s, mean delay 1,148 ms; without the selector 6.46 (D 10
+6.51). Adopted. With conf4 at D 12: 5.99 (mean 6.10). 500 ms at D 1: 6.37 (mean 6.41, D 0's 6.39 / 6.41) with 95.0%
+of words in time (p95 499 ms): a tie at the rule's edge, so 500 ms stays at D 0. (2) not passed (above).
+Next at 1.5 s: D 13 / 14 may also keep 95% in time with the full system (98.9% at D 12). Next at 500 ms: the Transformer
+architecture changes (shorter attention window, causal conv module, size), proposed, waiting for the user.
+**Queued 2026-11-20 17:44 EST (user: "go on both"):** (a) D 13 / 14 at 1.5 s (`waits_avg_20261120.py --waits 13,14`;
+the longest wait inside the 95% rule becomes the 1.5 s rule, fixed before the D 12 run). (b) Then
+`results/harness/queue/tfm_arch_20261120.py`: Y15 (2 s attention window per layer), W1 (causal conv module in every
+block), V1 (512 wide, 6 layers), two runs each (seeds as Y6_1 / Y6_2), about 19 h with decoding, done around midday
+2026-11-21. Rule set before training (recipe means, average weights): into the live pipeline if best 4-gram WER
+<= 6.66 (Y6 6.96 - 0.3), or never-seen-word phoneme error <= 32.75 (Y6 35.75 - 3) with WER <= 7.06.
+**(a) result (18:10 EST):** D 13 keeps 97.5% of words within 1.5 s and gives 5.99 (5.99 / 6.10 / 6.05 / 6.15, mean
+6.07; without the selector 6.49); D 14 keeps only 92.5% (fails; 6.05). By the rule fixed beforehand the 1.5 s rule is
+D 13: 5.99, mean delay 1,227 ms (D 12 gave 5.96 / mean 6.06, not used: choosing it for its WER would be selection on
+val-dev). README, charts 06 and 12 updated.
+**(b) first runs (2026-11-21 09:15 EST; val-dev, 1,253 sentences; one run each, final / avg weights; best 4-gram WER
+over scales 0.2-0.5, greedy PER, never-seen-word phoneme error):** V1_1 (512 x 6) **6.77 / 6.54**, PER 6.98 / 6.85,
+never-seen 33.2 / 33.1 (Y6_1 7.27 / 6.97, 8.07 / 7.95, 35.3; Y6_2 avg 6.95, 7.65, 36.2); better in every familiarity
+bin (seen 1-4 times 19.7 vs 24.1 / 22.2). Y15_1 (2 s window) 7.39 / 7.09, PER 8.17 / 8.13, never-seen 34.4 / 34.9:
+the short window did not help unseen words. W1_1 (conv) diverged after warmup (best in-training val PER at batch
+1,000, then blank-only output from about batch 16k; WER 96); W1_2 diverged the same way and was stopped at batch 26.4k.
+Y6's lr 0.002 and gradient clip 100 are twice / ten times the X conv runs' settings, the likely cause. Relaunched
+09:04 EST as `tfm_arch_20261120.py --seeds s11 --trained win2s win2s d512`: V1_2 training (about 2.5 h), then scoring
+of Y15_2 and V1_2, done around 12:30 PM. V1 passes the rule if V1_2 avg is at most 6.78 (recipe mean <= 6.66). Not
+re-run: conv at a lower learning rate (a recipe change; for the user).
+**Queued 2026-11-21 09:35 EST (user: "okay try V2. also score V1 with the full pipeline. and yes"; the user is away all
+weekend, so runs may go at any hour), one after the other:** (1) `results/harness/queue/v1_live_20261121.py`: V1_1 avg
+as the decider in Y6_1 avg's place, nothing else changed (scale 0.3, same members, LLMs and selectors), D 0 at 500 ms
+and D 12 / 13 / 14 at 1.5 s, four session splits; about 40 min. Rule: V1_1 avg replaces Y6_1 avg at a limit if its
+full-system WER, mean of four splits, is lower at that limit's rule wait (1.5 s: the longest inside the 95% rule) with
+at least 95% of words in time. (2) V2 (`tfm_arch_20261120.py d512mask5f`): V1 + Y13's short time masks, for a 200 ms
+Transformer decider; through the 200 ms full pipeline if its best WER (avg) is below Y13's 8.01, replacing D1_1 if
+below 8.06 there with 95% of words within 200 ms. (3) U1 (640 x 6, 30.9M) and T1 (512 x 8, 26.3M), one run each,
+scored as each finishes; a second run if run 1 is at least 0.15 below V1's recipe mean. Training about 2.5 / 3.4 / 3.2 h;
+all done around 1 AM Sunday.
+**(b) second runs (12:25 EST):** V1_2 **6.05 / 6.15** (final / avg), PER 6.79 / 6.67, never-seen 32.7 / 32.8. V1's
+recipe mean (avg) **6.35** (6.54 / 6.15) vs Y6 6.96: **passes the rule** (<= 6.66). Y15_2 7.16 / 7.14, never-seen 34.0 /
+33.9; Y15's mean 7.12, never-seen 34.4: not passed. U1 / T1 get a second run if run 1 (avg) is at most 6.20 (V1's mean
+- 0.15). Added before any V1 live result: V1_2 avg through the same full pipeline after V1_1 avg (`v1_live_20261121.py
+--decider s11`), so the recipe's live result is the mean of its two runs; the replace rule stays on V1_1 avg. V2 starts
+after it (about 2:00 PM), then U1 and T1.
+**V1_1 avg live result (13:16 EST; `results/harness/queue/20261121T143527Z_v1_live/`; full system, standard / random
+splits 1-3):** 500 ms D 0 **5.97** (5.97 / 5.79 / 5.82 / 6.05, mean 5.91; Y6 6.39, mean 6.41), 96.8% of words within
+500 ms, mean delay 276 ms (Y6 203). 1.5 s: D 13 keeps only 94.0% (fails), so by the rule the wait is D 12: **5.80** (5.80
+/ 5.67 / 5.80 / 5.87, mean 5.78; Y6 at D 13 5.99, mean 6.07), 97.7% within, mean delay 1,226 ms. D 14 83.4%. One model
+(the per-limit selector): 6.62 / 6.55 (Y6 7.29 / 6.96). Without the selector: 6.63 / 6.26. **Rule met at both limits:
+V1_1 avg is the 500 ms and 1.5 s decider; both are under 6% on the standard split and on the mean of four splits.** V1
+marks each word about one 80 ms frame later than Y6 (delays about 78 ms longer at every wait), so its D 12 has Y6's
+D 13 timing. The selectors were trained on Y6 decisions and used unchanged. Queued before V2
+(`v1_extras_20261121.py`): V1's one-model cells with the separate 3B (chart 03, README) and GPT-2 rescoring of V1_1 /
+V1_2 avg; charts and README regenerated after it.
+**Overnight results (read 2026-11-22 14:42 EST):** V1_2 avg live 5.81 at 500 ms (mean 5.81, 98.2% within, mean delay 208
+ms) and 5.61 at 1.5 s D 13 (mean 5.56; D 13 is V1_2's longest wait inside the 95% rule). V1_1 avg one model with the
+separate 3B: 6.93 / 6.51 (Y6 7.42 / 7.15). GPT-2 rescoring: V1_1 avg 4.78, V1_2 avg 4.85. V2 6.86 (avg; passes its
+gate), U1 (640 x 6) 6.74, T1 (512 x 8) 6.46: neither size step earns a second run (rule <= 6.20). **V2 at 200 ms (15:15
+EST, `v2_200_20261122.py`):** full system 6.66 (mean 6.66) vs D1_1 8.06, but 91.0% of words within 200 ms (p95 233 ms;
+92.6% without the selector): the rule (95%) is not met; D1_1 stays. Charts, README, figures README and the 595 deck
+updated to V1 (2026-11-22).
+**Four reporting cells (18:31 EST, `four_cells_20261122.py`):** every headline decider now has one model and full system,
+live and at sentence end. Learned sentence-end rescorer, one model / full system: D1_1 5.76 / 5.46, V1_1 avg 4.55 /
+**3.88**, V1_2 avg 4.20 / 3.73; V1_2 avg live one model 6.68 / 6.27 (`current_knowledge.md` 6.11).
+**T1_1 avg live (2026-11-23, 11:54 PM EST Sunday; `t1_live_20261123.py`, folder `20261123T032447Z_t1_live`):** through
+V1's full live pipeline at its best decode scale, 0.25. Expected beforehand: about V1_1 avg's result (acoustic WER 6.46
+vs 6.54). Result: full system 500 ms D 0 **5.80** (mean of four splits 5.79; V1_1 avg 5.97 / 5.91), 97.8% within, mean
+delay 229 ms; 1.5 s D 13 (the longest wait inside the 95% rule; D 14 90.3%) **5.42** (mean 5.43; V1_1 avg 5.80 / 5.78),
+96.7% within, 1,246 ms. Rule met at both limits: **T1_1 avg is the 500 ms and 1.5 s decider.** One model (separate 3B)
+6.57 / 6.39; sentence end: GPT-2 L 4.76, learned 4.13 / **3.71**. One run of T1; V1's two runs differ by 0.16 / 0.19 in
+the full system, so part of the gain may be seed variation.
+**Next (proposed, not queued):** a second run of T1 (T1_2, seed 11; about 3.2 h of training, then this live pipeline,
+about 1.5 h) so the decider is a recipe result, as V1's was. Expected: between V1's recipe (5.89 / 5.70) and T1_1.
+**Next at 200 ms (proposed, not queued):** V2's lists miss the rule on compute, not accuracy. (a) GPT-2 L ft in fp16 on
+V2's lists (fp32 now; OPT in fp16 left WER unchanged) and re-time; (b) a tighter selector gate or none; (c) a second run
+of V2 (V1's two runs differed by 0.39 in WER and V1_2 marked words earlier, 208 vs 276 ms mean delay at 500 ms). (a)
+and (b) need no training (about 15 min of GPU).
  LoRA on Qwen2.5-1.5B (then 3B): first on the synthetic decisions, then on the fold decisions (the
 real decoder's lists); `learning/selector/finetune.py`; `peft` needed (an environment change). About 1-2 h of GPU per
 run. At the deadline one prompt of about 100-150 tokens plus the K options: roughly 20-40 ms, inside the 500 ms

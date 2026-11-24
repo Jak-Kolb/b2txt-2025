@@ -28,6 +28,7 @@ a row below.
 | `transformer_pilots_2026-10-26.md` (was part of `current_knowledge.md` 4.8) | 2026-10-26 to 10-27 | Conv-Transformer block tests (Macaron, 800-batch), the 8k-batch pilot curves and the X3 training curve | `current_knowledge.md` 4.8 (summary) |
 | `transformer_tests_explanation_2026-11-10.md` (was `transformer_tests_explanation.md` in the repository root, untracked) | 2026-11-10 | Pre-run explanation of the corrected LightBeam-recipe runs (Y6-Y8) and the other prepared runs | `current_knowledge.md` 4.9, 4.10 |
 | `PLAN_sections_2026-11-10_to_11-18.md` (were sections of `docs/PLAN.md`) | 2026-11-10 to 11-18 | The 11-10 experiment list, the language-model steps L1 / L2, the follow-ups to the reproduced LightBeam model, chain 1, and the night of 11-17 | `docs/PLAN.md` "Next steps (2026-11-18)"; results in `current_knowledge.md` 4.9-4.11, 6.10, 6.11 |
+| `storage_cleanup_2026-11-24.md`, `storage_cleanup_2026-11-24_files.tsv` | 2026-11-24 | Log of the 130.9 GiB disk cleanup: smoke-test weights, two dataset archives identical to their extracted folders, and the weights of 21 unfinished unregistered runs; every deleted file, how to get each back, and the larger deletions left undecided | - |
 
 Not archived here:
 - `results/RESULTS.md` stays beside the run artifacts it cites (its source paths are relative to `results/`). It
